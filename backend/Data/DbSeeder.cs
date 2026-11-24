@@ -4,11 +4,14 @@ namespace ConsultasPlan.Data;
 
 public static class DbSeeder
 {
-    public static void Seed(AppDbContext db)
+    public static void Seed(AppDbContext db, TimeProvider reloj)
     {
         if (db.Sedes.Any()) return;
 
-        var hoy = DateTime.Now;
+        // Los datos iniciales se derivan del instante actual en UTC, igual que
+        // el resto del sistema. Con DateTime.Now, el huso del servidor movía
+        // las fechas sembradas respecto de las que luego se comparan.
+        var hoy = reloj.GetUtcNow().UtcDateTime;
         var y = hoy.Year;
 
         var sedes = new[]

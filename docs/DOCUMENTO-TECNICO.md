@@ -161,6 +161,118 @@ Los datos de prueba no reutilizan `DbSeeder`: sus fechas se derivan de
 `DateTime.Now`, por lo que los datos cambian según el día de ejecución. Un test
 cuyo resultado depende de cuándo se corre no verifica nada.
 
+### 3.3 Manejo de fechas — `fix/manejo-fechas-utc`
+
+Dos defectos distintos con la misma raíz: el sistema no tenía una noción única
+de "ahora" ni de en qué zona persiste.
+
+#### El desvío por huso horario
+
+El código base **escribía en UTC y comparaba contra hora local**:
+
+| Operación | Código base |
+|---|---|
+| `AfiliadosController.Create` | `afiliado.createdAt = DateTime.UtcNow` |
+| `ConsultasController.CrearConsulta` | `consulta.FechaCreacion = DateTime.UtcNow` |
+| `ConsultasController.CancelarConsulta` | `consulta.FechaHora - DateTime.Now` |
+| `ConsultasController.MarcarInasistencia` | `consulta.FechaHora > DateTime.Now` |
+| `DateTimeExtensions.IsInCurrentYear` | `fecha.Year == DateTime.Now.Year` |
+
+En Argentina eso son **tres horas de desvío** sobre la ventana de cancelación y
+sobre el cálculo de "año en curso". No produce ningún error: produce una
+respuesta equivocada.
+
+#### La pérdida de `DateTimeKind` en SQLite
+
+SQLite no tiene tipo fecha: guarda texto sin zona. EF Core devuelve esos
+valores con `DateTimeKind.Unspecified`, y .NET trata lo `Unspecified` como hora
+local al convertir. El resultado es que un instante guardado en UTC se
+reinterpreta como local al leerlo, con un desvío igual al huso del servidor,
+**sin error visible en ningún punto**.
+
+La corrección es un `ValueConverter` aplicado por convención a todas las
+propiedades de tipo fecha, en lugar de recordarlo propiedad por propiedad:
+
+```csharp
+protected override void ConfigureConventions(ModelConfigurationBuilder builder)
+{
+    builder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+    builder.Properties<DateTime?>().HaveConversion<UtcNullableDateTimeConverter>();
+}
+```
+
+Un `DateTime` con `Kind` `Unspecified` se asume UTC en lugar de convertirse
+desde hora local: así el instante almacenado no depende del huso del servidor
+que recibió la petición. Lo estricto sería **rechazar** fechas sin zona en el
+borde de la API; se difiere a la rama de validación de contratos.
+
+#### El reloj como dependencia
+
+`TimeProvider` se registra en el contenedor y se inyecta donde se necesita
+saber qué hora es. `TimeProvider.System` en producción; `FakeTimeProvider` en
+los tests.
+
+Esto no es ceremonia: **sin un reloj controlable, el borde de una regla
+temporal no se puede verificar**. Probar que la ventana de cancelación corta
+exactamente a las 24 horas exigiría esperar a que el reloj del sistema llegue
+a ese instante. Con el reloj inyectado, el borde es un parámetro del test.
+
+Es también la base de la Parte 2: la política de cupo depende de en qué año y
+en qué mes cae una fecha, y sus bordes —31 de diciembre, último día del mes—
+requieren exactamente esta capacidad.
+
+#### La ventana de cancelación (problema #4)
+
+Se corrige en esta rama porque es un defecto de cálculo temporal y porque su
+verificación depende del reloj inyectado.
+
+El código validaba `TimeSpan.FromHours(23)` mientras el mensaje al usuario
+prometía 24 horas. En la franja `[23 h, 24 h)` el sistema **aceptaba la
+cancelación mientras mostraba el cartel que decía rechazarla**. El límite pasa
+a 24 horas, nombrado en una constante en lugar de ser un literal dentro de la
+condición.
+
+#### Flujo completo
+
+El input `datetime-local` del formulario entrega `"2026-12-01T10:00"`, sin
+zona. Enviado así, el backend no puede saber a qué instante se refiere. El
+frontend lo convierte a ISO-8601 con sufijo `Z` antes de enviarlo.
+
+```
+navegador          datetime-local → new Date(...).toISOString() → "...T13:30:00Z"
+     │
+API                TimeProvider.GetUtcNow() para todo "ahora"
+     │
+EF Core            UtcDateTimeConverter por convención
+     │
+SQLite             texto sin zona — pero siempre el mismo instante
+     │
+respuesta          "2027-03-15T13:30:00Z"  ← con marca de zona
+     │
+navegador          new Date(...).toLocaleString('es-AR') → hora local correcta
+```
+
+**Verificación del round-trip** contra la API corriendo:
+
+```
+POST /consultas   fechaHora: "2027-03-15T13:30:00Z"
+GET  /consultas   fechaHora: "2027-03-15T13:30:00Z"   ← idéntico, con sufijo Z
+```
+
+Antes de la corrección la respuesta no llevaba sufijo, por lo que el navegador
+la interpretaba como hora local y mostraba un instante distinto del almacenado.
+
+#### Tests
+
+Los tests de persistencia usan **SQLite en memoria, no el proveedor InMemory de
+EF**. El problema que verifican es específico de SQLite —que no tiene tipo
+fecha—, y el proveedor InMemory conserva los objetos .NET tal cual: no
+reproduce la pérdida de `DateTimeKind` y daría verde sin probar nada.
+
+El test de la ventana de cancelación recorre `48 h`, `25 h`, `24 h`, `23 h` y
+`12 h` de anticipación, más el caso de `23 h 59 min`, que es donde el límite se
+cruza por un minuto.
+
 ---
 
 ## 4. Problemas detectados en el código base
@@ -175,10 +287,10 @@ corregido, planificado o fuera de alcance.
 | 1 | No compila: propiedad `Nombre` inexistente | `AfiliadosController.cs:50` | Corregido |
 | 2 | No compila: falta `using` de `Helpers` | `ConsultasController.cs:102` | Corregido |
 | 3 | `GET` que muta estado: cancelar una consulta responde a `[HttpGet]`. Un prefetch del navegador o un crawler puede cancelar consultas | `ConsultasController.cs:68` | Planificado |
-| 4 | Ventana de cancelación mal calculada: valida `FromHours(23)` mientras el mensaje al usuario dice 24 horas | `ConsultasController.cs:74` | Planificado |
+| 4 | Ventana de cancelación mal calculada: valida `FromHours(23)` mientras el mensaje al usuario dice 24 horas | `ConsultasController.cs:74` | Corregido |
 | 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Planificado |
 | 6 | Sin máquina de estados: se puede marcar inasistencia sobre una consulta cancelada, o registrar atención sobre una cancelada | `ConsultasController.cs` | Planificado |
-| 7 | `DateTime.Now` y `DateTime.UtcNow` mezclados: se persiste en UTC y se compara contra hora local. En Argentina son 3 horas de desvío sobre la ventana de 24 horas y sobre el cálculo de "año en curso" | Varios | Planificado |
+| 7 | `DateTime.Now` y `DateTime.UtcNow` mezclados: se persiste en UTC y se compara contra hora local. En Argentina son 3 horas de desvío sobre la ventana de 24 horas y sobre el cálculo de "año en curso". Se suma la pérdida de `DateTimeKind` al leer de SQLite | Varios | Corregido |
 | 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Planificado |
 | 9 | Sin validación de entrada: no hay `[Required]`, ni unicidad de DNI, ni formato de email, ni verificación de que `FechaHora` sea futura | Controllers | Planificado |
 | 10 | Detección de superposición incompleta: compara igualdad exacta de `FechaHora`, sin duración de consulta ni índice único que evite la condición de carrera | `ConsultasController.cs:54` | Parcial (ver §6) |
@@ -200,7 +312,7 @@ corregido, planificado o fuera de alcance.
 | 21 | `cancelar()` sin manejo de error y sin refrescar la vista: el usuario hace clic y no ocurre nada visible; el error queda en consola. Igual `marcarInasistencia()` | `ConsultasList.vue:63`, `ConsultaDetalle.vue:77` | Planificado |
 | 22 | Todos los errores muestran el mismo `alert('Error al procesar la solicitud')`, **descartando el mensaje que el backend ya envía**. Sin esto, la política de cupo es invisible para el usuario | Todas las vistas | Planificado |
 | 23 | Sin validación en el cliente: el formulario se envía vacío | `ConsultaNueva.vue` | Planificado |
-| 24 | `datetime-local` envía una fecha local sin zona, alimentando el problema de UTC del backend | `ConsultaNueva.vue:32` | Planificado |
+| 24 | `datetime-local` envía una fecha local sin zona, alimentando el problema de UTC del backend | `ConsultaNueva.vue:32` | Corregido |
 | 25 | Baja de afiliado sin confirmación | `AfiliadosList.vue:32` | Planificado |
 | 26 | Sin estados de carga ni botones deshabilitados durante la petición: permite doble envío | Todas las vistas | Planificado |
 | 27 | Selector de estado libre en el detalle, que expone el problema #5 desde la interfaz | `ConsultaDetalle.vue:18` | Planificado |
@@ -488,7 +600,7 @@ solicitado y por afectar el contrato que consume el frontend.
 | 0 | Repositorio, línea base | Completo |
 | 1 | Errores de compilación | Completo |
 | 2 | Normalización, convenciones, proyecto de tests | En curso |
-| 3 | Correcciones del backend | Pendiente |
+| 3 | Correcciones del backend | En curso — manejo de fechas y ventana de cancelación completos |
 | 4 | Capa de servicios con interfaces | Pendiente |
 | 5 | Política de cupo de nutrición | Pendiente |
 | 6 | Frontend: errores visibles y validación | Pendiente |
