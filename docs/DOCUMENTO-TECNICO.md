@@ -57,12 +57,7 @@ Convención de commits: [Conventional Commits](https://www.conventionalcommits.o
 
 ### Verificación
 
-Cada corrección arranca por un test que **falla** y describe el comportamiento
-actual. Esto cumple dos funciones: deja evidencia reproducible del problema
-antes de tocarlo, y convierte el fix en un cambio verificable en lugar de una
-afirmación.
-
-Para el código base existente se escribieron **tests de caracterización**: tests
+Cada corrección arranca por un test que **falla** y describe el comportamiento actual. Para el código base existente se escribieron **tests de caracterización**: tests
 que documentan el comportamiento tal como es hoy, incluyendo el incorrecto. Sin
 esa red, cada corrección posterior es una apuesta sobre qué más se rompió.
 
@@ -148,7 +143,7 @@ actual del código base, incluido el incorrecto:
 
 | Test | Problema que evidencia |
 |---|---|
-| Cancelar a 23:30 de la consulta es aceptado | #4 — la ventana valida 23 h y el mensaje dice 24 |
+| Cancelar a 23:30 de la consulta es aceptado | #4 — el código exige 23 h de anticipación y el mensaje promete 24: en esa hora de diferencia el sistema acepta lo que dice rechazar |
 | Marcar inasistencia sobre una consulta cancelada es aceptado | #6 |
 | Registrar atención sobre una consulta cancelada es aceptado | #6 |
 | Actualizar estado permite volver de `Atendido` a `Pendiente` | #5 |
