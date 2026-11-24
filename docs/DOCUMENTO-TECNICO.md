@@ -273,6 +273,90 @@ El test de la ventana de cancelación recorre `48 h`, `25 h`, `24 h`, `23 h` y
 `12 h` de anticipación, más el caso de `23 h 59 min`, que es donde el límite se
 cruza por un minuto.
 
+### 3.4 Semántica de las operaciones — `fix/semantica-operaciones`
+
+#### El `GET` que cancelaba consultas
+
+El código base exponía la cancelación como:
+
+```csharp
+[HttpGet("cancelar/{id}")]
+public async Task<IActionResult> CancelarConsulta(int id)
+```
+
+GET está definido por especificación como **seguro**: no debe producir efectos
+sobre el servidor. No es una convención de estilo — es un contrato del que
+depende toda la infraestructura web. Navegadores que precargan enlaces,
+aceleradores de navegación, proxies que cachean, antivirus corporativos que
+siguen URLs y rastreadores asumen que un GET se puede repetir sin consecuencias.
+
+Con esa ruta, una etiqueta `<img src="...">` en cualquier página, un enlace
+precargado o un crawler cancelaban consultas médicas sin que nadie lo pidiera.
+Es el defecto más grave del código base, y no produce ningún error: produce
+cancelaciones.
+
+| Antes | Ahora |
+|---|---|
+| `GET /consultas/cancelar/{id}` | `POST /consultas/{id}/cancelacion` |
+
+La ruta nueva sigue la forma que el propio controlador ya usaba para las demás
+operaciones de la consulta (`/inasistencia`, `/atencion`): un sub-recurso en
+sustantivo sobre POST. El código base era inconsistente consigo mismo.
+
+Es un cambio de contrato. El único consumidor es el frontend, que se actualiza
+en el mismo PR.
+
+#### Códigos de respuesta
+
+El código base devolvía `400 Bad Request` para toda regla de negocio incumplida.
+`400` significa que la petición está mal formada —el cliente la escribió mal— y
+eso no es lo que ocurre cuando un afiliado está bloqueado o cuando faltan menos
+de 24 horas: ahí la petición es impecable y lo que impide la operación es el
+**estado del sistema**. Esa distinción es la que le permite a un cliente decidir
+si reintentar tiene sentido.
+
+| Situación | Antes | Ahora |
+|---|---|---|
+| Afiliado o profesional inexistente | `404` | `404` |
+| Afiliado bloqueado | `400` | `409` |
+| Horario ocupado por el profesional | `400` | `409` |
+| Cancelación fuera de plazo | `400` | `409` |
+| Inasistencia sobre consulta futura | `400` | `409` |
+| Atención de una consulta de otro año | `400` | `409` |
+| Estado fuera del enum | `200` ✗ | `400` |
+
+El último invierte el criterio a propósito: un entero que no pertenece a
+`EstadoConsulta` **sí** es entrada malformada. El deserializador lo aceptaba y
+lo persistía, dejando la consulta en un estado que no existe en el dominio.
+
+Es el mismo criterio que se aplicará al cupo excedido (§5.11).
+
+#### Formato de error
+
+Las respuestas de error devolvían objetos anónimos (`new { mensaje = "..." }`),
+distintos según el endpoint y sin contrato declarado. Pasan a `ProblemDetails`
+(RFC 7807), que es el formato estándar de la plataforma: `title`, `detail`,
+`status`, con `Content-Type: application/problem+json`.
+
+El cliente lee siempre el mismo campo para mostrarle algo útil al usuario —
+habilitante directo de la corrección del frontend, donde hoy todo error termina
+en el mismo `alert` genérico.
+
+Se agrega además `UseExceptionHandler`, para que una excepción no controlada
+produzca un `500` con `ProblemDetails` en lugar de una página de error o un
+stack trace.
+
+#### Tests
+
+Estos tests **atraviesan el pipeline HTTP** con `WebApplicationFactory`, no
+instancian el controlador. La razón es precisa: que una ruta acepte o rechace
+GET lo decide el ruteo, no el cuerpo del método. Llamando al método
+directamente, `Cancelar_ya_no_responde_a_GET` sería imposible de escribir.
+
+La API de prueba sustituye SQLite por una base en memoria y el reloj por
+`FakeTimeProvider`, usando `ConfigureTestServices` — que corre *después* de los
+registros de la aplicación y por lo tanto efectivamente reemplaza al original.
+
 ---
 
 ## 4. Problemas detectados en el código base
@@ -286,9 +370,9 @@ corregido, planificado o fuera de alcance.
 |---|---|---|---|
 | 1 | No compila: propiedad `Nombre` inexistente | `AfiliadosController.cs:50` | Corregido |
 | 2 | No compila: falta `using` de `Helpers` | `ConsultasController.cs:102` | Corregido |
-| 3 | `GET` que muta estado: cancelar una consulta responde a `[HttpGet]`. Un prefetch del navegador o un crawler puede cancelar consultas | `ConsultasController.cs:68` | Planificado |
+| 3 | `GET` que muta estado: cancelar una consulta responde a `[HttpGet]`. Un prefetch del navegador o un crawler puede cancelar consultas | `ConsultasController.cs:68` | Corregido |
 | 4 | Ventana de cancelación mal calculada: valida `FromHours(23)` mientras el mensaje al usuario dice 24 horas | `ConsultasController.cs:74` | Corregido |
-| 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Planificado |
+| 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Parcial — la validación del valor recibido está corregida; las transiciones inválidas van en `fix/ciclo-vida-consulta` |
 | 6 | Sin máquina de estados: se puede marcar inasistencia sobre una consulta cancelada, o registrar atención sobre una cancelada | `ConsultasController.cs` | Planificado |
 | 7 | `DateTime.Now` y `DateTime.UtcNow` mezclados: se persiste en UTC y se compara contra hora local. En Argentina son 3 horas de desvío sobre la ventana de 24 horas y sobre el cálculo de "año en curso". Se suma la pérdida de `DateTimeKind` al leer de SQLite | Varios | Corregido |
 | 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Planificado |
@@ -301,7 +385,7 @@ corregido, planificado o fuera de alcance.
 | 15 | `EnsureCreated()` sin migraciones, en un sistema descrito como productivo: el esquema no puede evolucionar de forma controlada | `Program.cs` | Planificado |
 | 16 | Nomenclatura: `createdAt` e `isActive` en camelCase | `Models/Afiliado.cs` | Planificado |
 | 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Planificado |
-| 18 | Sin manejo global de errores, sin `ProblemDetails`, sin logging | `Program.cs` | Planificado |
+| 18 | Sin manejo global de errores, sin `ProblemDetails`, sin logging | `Program.cs` | Corregido — logging estructurado queda fuera de alcance (§6) |
 | 19 | Sin tests | — | Corregido |
 | 20 | CORS `AllowAnyOrigin` y Swagger expuesto en todos los ambientes | `Program.cs` | Ver §6 |
 

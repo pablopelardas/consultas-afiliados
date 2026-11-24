@@ -23,6 +23,11 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Los errores se devuelven como ProblemDetails (RFC 7807): un formato único y
+// documentado en lugar de un objeto anónimo distinto por endpoint. El cliente
+// lee siempre el mismo campo para mostrarle algo útil al usuario.
+builder.Services.AddProblemDetails();
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -43,9 +48,19 @@ using (var scope = app.Services.CreateScope())
     DbSeeder.Seed(db, reloj);
 }
 
+// Una excepción no controlada debe producir un 500 con ProblemDetails, no una
+// página de error ni el stack trace. Va antes que todo lo demás para envolver
+// al resto del pipeline.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseCors();
 app.MapControllers();
 app.Run();
+
+// Expone la clase Program generada por los top-level statements para que
+// WebApplicationFactory pueda levantar la API en los tests de integración.
+public partial class Program { }

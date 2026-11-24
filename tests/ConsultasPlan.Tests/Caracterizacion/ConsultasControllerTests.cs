@@ -77,25 +77,6 @@ public class ConsultasControllerTests
         Assert.Equal(EstadoConsulta.Pendiente, db.Consultas.Find(consulta.Id)!.Estado);
     }
 
-    // Problema #5 — Tampoco valida que el valor recibido sea un miembro del
-    // enum. Un entero fuera de rango se persiste igual.
-    [Fact]
-    public async Task Actualizar_estado_acepta_un_valor_que_no_pertenece_al_enum()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-        var consulta = db.AgregarConsulta(afiliado, profesional, Reloj.Ahora.AddDays(5));
-        var estadoInexistente = (EstadoConsulta)99;
-
-        var resultado = await Controlador(db).ActualizarEstado(
-            consulta.Id, new ActualizarEstadoRequest { Estado = estadoInexistente });
-
-        Assert.IsType<OkObjectResult>(resultado);
-        Assert.Equal(estadoInexistente, db.Consultas.Find(consulta.Id)!.Estado);
-        Assert.False(Enum.IsDefined(db.Consultas.Find(consulta.Id)!.Estado));
-    }
-
     // Problema #9 — No se valida que la fecha solicitada sea futura.
     // Se puede agendar una consulta en el pasado.
     [Fact]

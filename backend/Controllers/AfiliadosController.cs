@@ -18,6 +18,11 @@ public class AfiliadosController : ControllerBase
         _reloj = reloj;
     }
 
+    private ObjectResult NoEncontrado() => Problem(
+        detail: "El afiliado indicado no existe.",
+        statusCode: StatusCodes.Status404NotFound,
+        title: "Recurso no encontrado");
+
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -29,7 +34,7 @@ public class AfiliadosController : ControllerBase
     public async Task<IActionResult> GetById(int id)
     {
         var afiliado = await _context.Afiliados.FindAsync(id);
-        if (afiliado == null) return NotFound();
+        if (afiliado == null) return NoEncontrado();
         return Ok(afiliado);
     }
 
@@ -47,7 +52,7 @@ public class AfiliadosController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] Afiliado afiliado)
     {
         var existing = await _context.Afiliados.FindAsync(id);
-        if (existing == null) return NotFound();
+        if (existing == null) return NoEncontrado();
 
         existing.NombreCompleto = afiliado.NombreCompleto;
         existing.DNI = afiliado.DNI;
@@ -62,7 +67,7 @@ public class AfiliadosController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var afiliado = await _context.Afiliados.FindAsync(id);
-        if (afiliado == null) return NotFound();
+        if (afiliado == null) return NoEncontrado();
 
         _context.Afiliados.Remove(afiliado);
         await _context.SaveChangesAsync();
