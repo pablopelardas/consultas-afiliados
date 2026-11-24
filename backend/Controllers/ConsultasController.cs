@@ -25,6 +25,21 @@ public class ConsultasController : ControllerBase
     // 24: en esa franja el sistema aceptaba lo que decía rechazar.
     private static readonly TimeSpan AnticipacionMinimaParaCancelar = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// 409: la petición es válida y está bien formada, pero el estado actual
+    /// del sistema no permite la operación. 400 queda reservado para entrada
+    /// malformada, que es un problema del cliente y no del estado.
+    /// </summary>
+    private ObjectResult Conflicto(string detalle) => Problem(
+        detail: detalle,
+        statusCode: StatusCodes.Status409Conflict,
+        title: "La operación no es posible en el estado actual");
+
+    private ObjectResult NoEncontrado(string detalle) => Problem(
+        detail: detalle,
+        statusCode: StatusCodes.Status404NotFound,
+        title: "Recurso no encontrado");
+
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -51,21 +66,21 @@ public class ConsultasController : ControllerBase
     {
         var afiliado = await _context.Afiliados.FindAsync(consulta.AfiliadoId);
         if (afiliado == null)
-            return NotFound(new { mensaje = "Afiliado no encontrado." });
+            return NoEncontrado("El afiliado indicado no existe.");
 
         if (afiliado.Bloqueado)
-            return BadRequest(new { mensaje = "El afiliado se encuentra bloqueado para agendar consultas." });
+            return Conflicto("El afiliado se encuentra bloqueado para agendar consultas.");
 
         var profesionalExiste = await _context.Profesionales.AnyAsync(p => p.Id == consulta.ProfesionalId);
         if (!profesionalExiste)
-            return NotFound(new { mensaje = "Profesional no encontrado." });
+            return NoEncontrado("El profesional indicado no existe.");
 
         var consultaConflicto = await _context.Consultas.AnyAsync(c =>
             c.ProfesionalId == consulta.ProfesionalId &&
             c.FechaHora == consulta.FechaHora &&
             c.Estado != EstadoConsulta.Cancelado);
         if (consultaConflicto)
-            return BadRequest(new { mensaje = "El profesional ya tiene una consulta en ese horario." });
+            return Conflicto("El profesional ya tiene una consulta agendada en ese horario.");
 
         consulta.FechaCreacion = Ahora;
         consulta.Estado = EstadoConsulta.Pendiente;
@@ -74,14 +89,27 @@ public class ConsultasController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = consulta.Id }, consulta);
     }
 
-    [HttpGet("cancelar/{id}")]
+    /// <summary>
+    /// Cancela una consulta.
+    /// </summary>
+    /// <remarks>
+    /// El código base exponía esta operación como <c>GET /consultas/cancelar/{id}</c>.
+    /// GET está definido como seguro: no debe producir efectos. Navegadores,
+    /// proxies y crawlers lo asumen, y cualquier precarga de enlaces, un
+    /// rastreador o una etiqueta &lt;img&gt; apuntando a esa URL cancelaba la
+    /// consulta sin que nadie lo pidiera.
+    ///
+    /// Pasa a POST sobre un sub-recurso, igual que las demás operaciones de la
+    /// consulta (/inasistencia, /atencion).
+    /// </remarks>
+    [HttpPost("{id}/cancelacion")]
     public async Task<IActionResult> CancelarConsulta(int id)
     {
         var consulta = await _context.Consultas.FindAsync(id);
-        if (consulta == null) return NotFound();
+        if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
         if (consulta.FechaHora - Ahora < AnticipacionMinimaParaCancelar)
-            return BadRequest(new { mensaje = "No se puede cancelar con menos de 24 horas de anticipación." });
+            return Conflicto("No se puede cancelar con menos de 24 horas de anticipación.");
 
         consulta.Estado = EstadoConsulta.Cancelado;
         await _context.SaveChangesAsync();
@@ -92,10 +120,10 @@ public class ConsultasController : ControllerBase
     public async Task<IActionResult> MarcarInasistencia(int id)
     {
         var consulta = await _context.Consultas.FindAsync(id);
-        if (consulta == null) return NotFound();
+        if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
         if (consulta.FechaHora > Ahora)
-            return BadRequest(new { mensaje = "No se puede registrar una inasistencia sobre una consulta futura." });
+            return Conflicto("No se puede registrar una inasistencia sobre una consulta futura.");
 
         consulta.Estado = EstadoConsulta.Inasistencia;
         await _context.SaveChangesAsync();
@@ -106,10 +134,10 @@ public class ConsultasController : ControllerBase
     public async Task<IActionResult> RegistrarAtencion(int id)
     {
         var consulta = await _context.Consultas.FindAsync(id);
-        if (consulta == null) return NotFound();
+        if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
         if (!consulta.FechaHora.IsInCurrentYear(Ahora))
-            return BadRequest(new { mensaje = "Solo se pueden registrar atenciones de consultas del año en curso." });
+            return Conflicto("Solo se pueden registrar atenciones de consultas del año en curso.");
 
         consulta.Estado = EstadoConsulta.Atendido;
         await _context.SaveChangesAsync();
@@ -119,8 +147,18 @@ public class ConsultasController : ControllerBase
     [HttpPut("{id}/estado")]
     public async Task<IActionResult> ActualizarEstado(int id, [FromBody] ActualizarEstadoRequest request)
     {
+        // Un entero fuera del enum es entrada malformada, no un conflicto de
+        // estado: el deserializador de System.Text.Json acepta cualquier valor
+        // numérico y lo persistía tal cual.
+        if (!Enum.IsDefined(request.Estado))
+        {
+            ModelState.AddModelError(nameof(request.Estado),
+                $"'{(int)request.Estado}' no es un estado de consulta válido.");
+            return ValidationProblem(ModelState);
+        }
+
         var consulta = await _context.Consultas.FindAsync(id);
-        if (consulta == null) return NotFound();
+        if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
         consulta.Estado = request.Estado;
         await _context.SaveChangesAsync();

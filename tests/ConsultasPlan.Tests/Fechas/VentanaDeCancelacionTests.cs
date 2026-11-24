@@ -1,6 +1,7 @@
 using ConsultasPlan.Controllers;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ConsultasPlan.Tests.Fechas;
@@ -43,7 +44,9 @@ public class VentanaDeCancelacionTests
         }
         else
         {
-            Assert.True(resultado is BadRequestObjectResult, $"Debía rechazar {caso}.");
+            // 409: la petición es válida, el estado del recurso no la permite.
+            Assert.Equal(StatusCodes.Status409Conflict,
+                Assert.IsType<ObjectResult>(resultado).StatusCode);
             Assert.Equal(EstadoConsulta.Pendiente, estadoFinal);
         }
     }
@@ -63,7 +66,8 @@ public class VentanaDeCancelacionTests
 
         var resultado = await controlador.CancelarConsulta(consulta.Id);
 
-        Assert.IsType<BadRequestObjectResult>(resultado);
+        Assert.Equal(StatusCodes.Status409Conflict,
+            Assert.IsType<ObjectResult>(resultado).StatusCode);
         Assert.Equal(EstadoConsulta.Pendiente, db.Consultas.Find(consulta.Id)!.Estado);
     }
 
