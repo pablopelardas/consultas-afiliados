@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
 
 namespace ConsultasPlan.Controllers;
@@ -19,6 +20,6 @@ public class ProfesionalesController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var profesionales = await _context.Profesionales.Include(p => p.Sede).ToListAsync();
-        return Ok(profesionales);
+        return Ok(profesionales.Select(ProfesionalResponse.De));
     }
 }

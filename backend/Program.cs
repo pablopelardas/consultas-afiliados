@@ -14,8 +14,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    options.JsonSerializerOptions.ReferenceHandler =
-        System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+    // ReferenceHandler.IgnoreCycles ya no hace falta: era un paliativo para
+    // poder serializar entidades de EF con navegación circular. La API devuelve
+    // contratos propios, que no tienen ciclos porque no los necesitan.
     options.JsonSerializerOptions.Converters.Add(
         new System.Text.Json.Serialization.JsonStringEnumConverter());
 });

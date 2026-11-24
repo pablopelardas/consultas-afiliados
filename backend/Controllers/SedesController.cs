@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
 
 namespace ConsultasPlan.Controllers;
@@ -19,6 +20,6 @@ public class SedesController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var sedes = await _context.Sedes.ToListAsync();
-        return Ok(sedes);
+        return Ok(sedes.Select(SedeResponse.De));
     }
 }

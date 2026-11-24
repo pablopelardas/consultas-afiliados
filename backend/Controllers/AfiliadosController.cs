@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
 using ConsultasPlan.Models;
 
@@ -50,7 +51,7 @@ public class AfiliadosController : ControllerBase
         var afiliados = await _context.Afiliados
             .Where(a => a.Activo)
             .ToListAsync();
-        return Ok(afiliados);
+        return Ok(afiliados.Select(AfiliadoResponse.De));
     }
 
     [HttpGet("{id}")]
@@ -59,34 +60,52 @@ public class AfiliadosController : ControllerBase
         var afiliado = await _context.Afiliados
             .FirstOrDefaultAsync(a => a.Id == id && a.Activo);
         if (afiliado == null) return NoEncontrado();
-        return Ok(afiliado);
+        return Ok(AfiliadoResponse.De(afiliado));
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Afiliado afiliado)
+    public async Task<IActionResult> Create([FromBody] CrearAfiliadoRequest request)
     {
-        afiliado.FechaAlta = Ahora;
-        afiliado.Activo = true;
-        afiliado.FechaBaja = null;
+        // El DNI identifica a la persona: dos afiliados con el mismo documento
+        // son el mismo afiliado cargado dos veces, y a partir de ahí el
+        // historial y el cupo quedan partidos entre dos registros.
+        if (await _context.Afiliados.AnyAsync(a => a.DNI == request.DNI))
+            return Conflicto($"Ya existe un afiliado con el DNI {request.DNI}.");
+
+        var afiliado = new Afiliado
+        {
+            NombreCompleto = request.NombreCompleto,
+            DNI = request.DNI,
+            Email = request.Email,
+            Telefono = request.Telefono,
+            Plan = request.Plan,
+            FechaAlta = Ahora,
+            Activo = true,
+            FechaBaja = null
+        };
+
         _context.Afiliados.Add(afiliado);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetById), new { id = afiliado.Id }, afiliado);
+        return CreatedAtAction(nameof(GetById), new { id = afiliado.Id }, AfiliadoResponse.De(afiliado));
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Afiliado afiliado)
+    public async Task<IActionResult> Update(int id, [FromBody] ActualizarAfiliadoRequest request)
     {
         var existing = await _context.Afiliados
             .FirstOrDefaultAsync(a => a.Id == id && a.Activo);
         if (existing == null) return NoEncontrado();
 
-        existing.NombreCompleto = afiliado.NombreCompleto;
-        existing.DNI = afiliado.DNI;
-        existing.Email = afiliado.Email;
-        existing.Telefono = afiliado.Telefono;
+        if (await _context.Afiliados.AnyAsync(a => a.DNI == request.DNI && a.Id != id))
+            return Conflicto($"Ya existe otro afiliado con el DNI {request.DNI}.");
+
+        existing.NombreCompleto = request.NombreCompleto;
+        existing.DNI = request.DNI;
+        existing.Email = request.Email;
+        existing.Telefono = request.Telefono;
 
         await _context.SaveChangesAsync();
-        return Ok(existing);
+        return Ok(AfiliadoResponse.De(existing));
     }
 
     /// <summary>
@@ -134,6 +153,6 @@ public class AfiliadosController : ControllerBase
         afiliado.Activo = true;
         afiliado.FechaBaja = null;
         await _context.SaveChangesAsync();
-        return Ok(afiliado);
+        return Ok(AfiliadoResponse.De(afiliado));
     }
 }
