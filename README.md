@@ -36,10 +36,26 @@ El cliente levanta en **http://localhost:5173**.
 
 ---
 
+---
+
+## Tests
+
+```bash
+dotnet test
+```
+
+---
+
 ## Estructura del proyecto
 
 ```
 /
-├── backend/     # API REST (.NET 8 · EF Core · SQLite)
-└── frontend/    # SPA (Vue 3 · Vite)
+├── ConsultasPlan.sln
+├── backend/                     # API REST (.NET 8 · EF Core · SQLite)
+├── frontend/                    # SPA (Vue 3 · Vite)
+├── tests/ConsultasPlan.Tests/   # xUnit · EF InMemory · FakeTimeProvider
+└── docs/                        # documento técnico
 ```
+
+> **Documento técnico:** [`docs/DOCUMENTO-TECNICO.md`](docs/DOCUMENTO-TECNICO.md)
+> — cambios realizados, supuestos tomados y alcance.

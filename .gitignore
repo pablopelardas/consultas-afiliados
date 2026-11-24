@@ -12,3 +12,8 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Tests
+tests/**/bin/
+tests/**/obj/
+[Tt]est[Rr]esults/
