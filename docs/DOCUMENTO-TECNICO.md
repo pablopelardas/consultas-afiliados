@@ -404,6 +404,93 @@ detrás de una interfaz, orquestación afuera.
 transiciones válidas no se tocaron. Lo que cambia es que ahora consulta la
 tabla: dejó de ser la puerta por la que se evadían las reglas del dominio.
 
+### 3.6 Integridad del historial — `fix/historial-afiliados`
+
+El código base ejecutaba `Remove` sobre el afiliado. Con la clave foránea en
+`OnDelete(SetNull)`, eso dejaba **sus consultas sin paciente**: se perdía de
+forma irreversible a quién correspondía cada atención médica.
+
+```
+antes      DELETE /afiliados/3
+           → el registro desaparece
+           → sus 6 consultas quedan con AfiliadoId = NULL
+           → el historial clínico sigue ahí, sin dueño
+
+ahora      DELETE /afiliados/3
+           → Activo = false, FechaBaja = <ahora>
+           → el afiliado desaparece de las vistas operativas
+           → sus 6 consultas conservan nombre, DNI y vínculo
+```
+
+Y el modelo **ya traía el campo** para hacerlo bien. `isActive` existía desde el
+principio y nadie lo usaba.
+
+#### Dónde se filtra, y por qué no con un filtro global
+
+EF Core ofrece `HasQueryFilter`, que aplicaría la condición a todas las
+consultas automáticamente. Se descartó.
+
+Un filtro global sobre `Afiliado` también alcanza a
+`Include(c => c.Afiliado)` al leer consultas: las consultas de alguien dado de
+baja quedarían **sin afiliado**, y el historial clínico perdería el nombre del
+paciente. Es exactamente la integridad que la baja lógica viene a proteger.
+
+El criterio es comparar qué pasa cuando alguien se olvida:
+
+| Enfoque | Si se olvida | Consecuencia |
+|---|---|---|
+| Filtro explícito | Falta un `Where(a => a.Activo)` | Se lista a alguien de más. Visible, molesto |
+| Filtro global | Falta un `IgnoreQueryFilters()` | **Se pierde un historial.** Silencioso |
+
+El segundo error es más grave y más difícil de notar. El filtro vive donde se
+decide a quién se lista como afiliado vigente.
+
+#### Alcance del filtrado
+
+| Operación | Comportamiento |
+|---|---|
+| `GET /afiliados` | Solo vigentes |
+| `GET /afiliados/{id}` | `404` si está dado de baja |
+| `PUT /afiliados/{id}` | `404` si está dado de baja |
+| `DELETE /afiliados/{id}` | Baja lógica. `409` si ya estaba de baja |
+| `POST /afiliados/{id}/reactivacion` | Revierte la baja. `409` si ya estaba activo |
+| `POST /consultas` | `404` si el afiliado está dado de baja |
+| `GET /consultas` | **Sin filtrar.** El historial se conserva completo |
+
+La última fila es el punto: las consultas de un afiliado dado de baja **siguen
+apareciendo con su paciente**. La baja lo saca de la operación, no de la
+historia.
+
+Agendar merece una aclaración: el id de un afiliado dado de baja sigue
+existiendo aunque no figure en ninguna vista, así que `POST /consultas` tiene
+que negarse explícitamente. Devuelve `404` y no `409` porque, desde la
+perspectiva de quien agenda, ese afiliado no existe.
+
+#### La reactivación
+
+Una baja que no se puede deshacer es, en la práctica, un borrado con otro
+nombre que además ocupa lugar. `POST /afiliados/{id}/reactivacion` es lo que
+hace que la baja lógica sea realmente lógica.
+
+#### Nomenclatura y clave foránea
+
+Aprovechando que la rama trabaja sobre este modelo, `createdAt` e `isActive`
+pasan a `FechaAlta` y `Activo` (problema #16). **Las columnas conservan su
+nombre** mediante `HasColumnName`: la convención del lenguaje se corrige en el
+código sin requerir una migración de esquema sobre un sistema en producción.
+
+La clave foránea pasa de `SetNull` a `Restrict`. Con baja lógica el borrado
+físico ya no es parte del flujo, y si alguien lo intentara la base debe negarse
+en lugar de dejar consultas sin afiliado. Es defensa en profundidad sobre la
+misma decisión que toma el controlador.
+
+#### Frontend
+
+El botón decía "Eliminar" y ya no elimina. Pasa a "Dar de baja", y el método del
+cliente se renombra en consecuencia. El texto de un botón es parte del contrato
+con quien lo usa: si dice que borra y da de baja, la próxima decisión que tome
+el operador va a estar basada en algo falso.
+
 ---
 
 ## 4. Problemas detectados en el código base
@@ -427,10 +514,10 @@ corregido, planificado o fuera de alcance.
 | 10 | Detección de superposición incompleta: compara igualdad exacta de `FechaHora`, sin duración de consulta ni índice único que evite la condición de carrera | `ConsultasController.cs:54` | Parcial (ver §6) |
 | 11 | `Afiliado.ConsultasUsadas` es un contador que nadie actualiza. Dato desnormalizado y engañoso | `Models/Afiliado.cs` | Ver §5.9 |
 | 12 | `Afiliado.FechaBloqueo` nunca se escribe | `Models/Afiliado.cs` | Planificado |
-| 13 | Baja física de afiliados existiendo `isActive`, y con FK `OnDelete(SetNull)`: las consultas quedan sin afiliado y se pierde el historial | `AfiliadosController.cs:59` | Planificado |
+| 13 | Baja física de afiliados existiendo `isActive`, y con FK `OnDelete(SetNull)`: las consultas quedan sin afiliado y se pierde el historial | `AfiliadosController.cs:59` | Corregido |
 | 14 | `Especialidad` es texto libre. La política de cupo dependería de comparar contra el literal `"Nutrición"` | `Models/Profesional.cs` | Planificado (ver §5.8) |
 | 15 | `EnsureCreated()` sin migraciones, en un sistema descrito como productivo: el esquema no puede evolucionar de forma controlada | `Program.cs` | Planificado |
-| 16 | Nomenclatura: `createdAt` e `isActive` en camelCase | `Models/Afiliado.cs` | Planificado |
+| 16 | Nomenclatura: `createdAt` e `isActive` en camelCase | `Models/Afiliado.cs` | Corregido — propiedades renombradas; las columnas conservan su nombre para no requerir migración |
 | 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Planificado |
 | 18 | Sin manejo global de errores, sin `ProblemDetails`, sin logging | `Program.cs` | Corregido — logging estructurado queda fuera de alcance (§6) |
 | 19 | Sin tests | — | Corregido |

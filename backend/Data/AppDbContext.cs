@@ -29,10 +29,19 @@ public class AppDbContext : DbContext
             .Property(c => c.Modalidad)
             .HasConversion<string>();
 
+        // Restrict, no SetNull: con baja lógica el borrado físico ya no es parte
+        // del flujo, y si alguien lo intentara la base debe negarse en lugar de
+        // dejar consultas sin afiliado. Es defensa en profundidad sobre la misma
+        // decisión que toma el controlador.
         modelBuilder.Entity<Consulta>()
             .HasOne(c => c.Afiliado)
             .WithMany()
             .HasForeignKey(c => c.AfiliadoId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Las propiedades se renombraron a la convención de .NET; las columnas
+        // conservan su nombre para no requerir una migración de esquema.
+        modelBuilder.Entity<Afiliado>().Property(a => a.FechaAlta).HasColumnName("createdAt");
+        modelBuilder.Entity<Afiliado>().Property(a => a.Activo).HasColumnName("isActive");
     }
 }

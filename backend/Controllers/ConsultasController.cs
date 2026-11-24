@@ -69,6 +69,11 @@ public class ConsultasController : ControllerBase
         if (afiliado == null)
             return NoEncontrado("El afiliado indicado no existe.");
 
+        // Un afiliado dado de baja no figura en ninguna vista operativa, pero
+        // su id sigue existiendo: agendar por id debe negarse igual.
+        if (!afiliado.Activo)
+            return NoEncontrado("El afiliado indicado no existe.");
+
         if (afiliado.Bloqueado)
             return Conflicto("El afiliado se encuentra bloqueado para agendar consultas.");
 

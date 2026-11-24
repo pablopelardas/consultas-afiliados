@@ -29,7 +29,7 @@
             <span v-else style="color: #388e3c">No</span>
           </td>
           <td>
-            <button class="btn-danger" @click="eliminar(a.id)">Eliminar</button>
+            <button class="btn-danger" @click="darDeBaja(a.id)">Dar de baja</button>
           </td>
         </tr>
       </tbody>
@@ -57,9 +57,11 @@ export default {
     }
   },
   methods: {
-    async eliminar(id) {
+    // Baja lógica: el afiliado deja de listarse, pero su historial de consultas
+    // se conserva. Por eso desaparece de la tabla sin recargar nada.
+    async darDeBaja(id) {
       try {
-        await afiliadosApi.delete(id)
+        await afiliadosApi.darDeBaja(id)
         this.afiliados = this.afiliados.filter(a => a.id !== id)
       } catch {
         alert('Error al procesar la solicitud')
