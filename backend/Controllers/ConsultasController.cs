@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ConsultasPlan.Data;
+using ConsultasPlan.Dominio;
 using ConsultasPlan.Helpers;
 using ConsultasPlan.Models;
 
@@ -108,6 +109,9 @@ public class ConsultasController : ControllerBase
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
+        if (!CicloDeVidaConsulta.PuedeTransicionar(consulta.Estado, EstadoConsulta.Cancelado))
+            return Conflicto(CicloDeVidaConsulta.ExplicarRechazo(consulta.Estado, EstadoConsulta.Cancelado));
+
         if (consulta.FechaHora - Ahora < AnticipacionMinimaParaCancelar)
             return Conflicto("No se puede cancelar con menos de 24 horas de anticipación.");
 
@@ -122,6 +126,9 @@ public class ConsultasController : ControllerBase
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
+        if (!CicloDeVidaConsulta.PuedeTransicionar(consulta.Estado, EstadoConsulta.Inasistencia))
+            return Conflicto(CicloDeVidaConsulta.ExplicarRechazo(consulta.Estado, EstadoConsulta.Inasistencia));
+
         if (consulta.FechaHora > Ahora)
             return Conflicto("No se puede registrar una inasistencia sobre una consulta futura.");
 
@@ -135,6 +142,9 @@ public class ConsultasController : ControllerBase
     {
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
+
+        if (!CicloDeVidaConsulta.PuedeTransicionar(consulta.Estado, EstadoConsulta.Atendido))
+            return Conflicto(CicloDeVidaConsulta.ExplicarRechazo(consulta.Estado, EstadoConsulta.Atendido));
 
         if (!consulta.FechaHora.IsInCurrentYear(Ahora))
             return Conflicto("Solo se pueden registrar atenciones de consultas del año en curso.");
@@ -159,6 +169,11 @@ public class ConsultasController : ControllerBase
 
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
+
+        // El código base asignaba el estado sin validar nada: este endpoint era
+        // la vía por la que se evadían todas las reglas del dominio.
+        if (!CicloDeVidaConsulta.PuedeTransicionar(consulta.Estado, request.Estado))
+            return Conflicto(CicloDeVidaConsulta.ExplicarRechazo(consulta.Estado, request.Estado));
 
         consulta.Estado = request.Estado;
         await _context.SaveChangesAsync();
