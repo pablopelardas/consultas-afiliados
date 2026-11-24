@@ -11,11 +11,19 @@ namespace ConsultasPlan.Controllers;
 public class ConsultasController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly TimeProvider _reloj;
 
-    public ConsultasController(AppDbContext context)
+    public ConsultasController(AppDbContext context, TimeProvider reloj)
     {
         _context = context;
+        _reloj = reloj;
     }
+
+    private DateTime Ahora => _reloj.GetUtcNow().UtcDateTime;
+
+    // El código base validaba 23 horas mientras el mensaje al usuario prometía
+    // 24: en esa franja el sistema aceptaba lo que decía rechazar.
+    private static readonly TimeSpan AnticipacionMinimaParaCancelar = TimeSpan.FromHours(24);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -59,7 +67,7 @@ public class ConsultasController : ControllerBase
         if (consultaConflicto)
             return BadRequest(new { mensaje = "El profesional ya tiene una consulta en ese horario." });
 
-        consulta.FechaCreacion = DateTime.UtcNow;
+        consulta.FechaCreacion = Ahora;
         consulta.Estado = EstadoConsulta.Pendiente;
         _context.Consultas.Add(consulta);
         await _context.SaveChangesAsync();
@@ -72,7 +80,7 @@ public class ConsultasController : ControllerBase
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NotFound();
 
-        if (consulta.FechaHora - DateTime.Now < TimeSpan.FromHours(23))
+        if (consulta.FechaHora - Ahora < AnticipacionMinimaParaCancelar)
             return BadRequest(new { mensaje = "No se puede cancelar con menos de 24 horas de anticipación." });
 
         consulta.Estado = EstadoConsulta.Cancelado;
@@ -86,7 +94,7 @@ public class ConsultasController : ControllerBase
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NotFound();
 
-        if (consulta.FechaHora > DateTime.Now)
+        if (consulta.FechaHora > Ahora)
             return BadRequest(new { mensaje = "No se puede registrar una inasistencia sobre una consulta futura." });
 
         consulta.Estado = EstadoConsulta.Inasistencia;
@@ -100,7 +108,7 @@ public class ConsultasController : ControllerBase
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NotFound();
 
-        if (!consulta.FechaHora.IsInCurrentYear())
+        if (!consulta.FechaHora.IsInCurrentYear(Ahora))
             return BadRequest(new { mensaje = "Solo se pueden registrar atenciones de consultas del año en curso." });
 
         consulta.Estado = EstadoConsulta.Atendido;

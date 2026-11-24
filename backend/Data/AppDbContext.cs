@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ConsultasPlan.Data.Converters;
 using ConsultasPlan.Models;
 
 namespace ConsultasPlan.Data;
@@ -11,6 +12,12 @@ public class AppDbContext : DbContext
     public DbSet<Consulta> Consultas { get; set; }
     public DbSet<Profesional> Profesionales { get; set; }
     public DbSet<Sede> Sedes { get; set; }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<UtcNullableDateTimeConverter>();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

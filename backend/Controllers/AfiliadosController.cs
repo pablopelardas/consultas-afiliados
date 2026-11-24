@@ -10,10 +10,12 @@ namespace ConsultasPlan.Controllers;
 public class AfiliadosController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly TimeProvider _reloj;
 
-    public AfiliadosController(AppDbContext context)
+    public AfiliadosController(AppDbContext context, TimeProvider reloj)
     {
         _context = context;
+        _reloj = reloj;
     }
 
     [HttpGet]
@@ -34,7 +36,7 @@ public class AfiliadosController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] Afiliado afiliado)
     {
-        afiliado.createdAt = DateTime.UtcNow;
+        afiliado.createdAt = _reloj.GetUtcNow().UtcDateTime;
         afiliado.isActive = true;
         _context.Afiliados.Add(afiliado);
         await _context.SaveChangesAsync();

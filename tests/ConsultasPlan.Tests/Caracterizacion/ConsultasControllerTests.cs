@@ -21,24 +21,8 @@ namespace ConsultasPlan.Tests.Caracterizacion;
 /// </remarks>
 public class ConsultasControllerTests
 {
-    // Problema #4 — La ventana de cancelación está mal calculada.
-    // El mensaje al usuario dice 24 horas; el código valida 23.
-    [Fact]
-    public async Task Cancelar_a_23_horas_y_media_de_la_consulta_es_aceptado_aunque_el_mensaje_diga_24_horas()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-        var consulta = db.AgregarConsulta(
-            afiliado, profesional, DateTime.Now.AddHours(23).AddMinutes(30));
-
-        var controller = new ConsultasController(db);
-
-        var resultado = await controller.CancelarConsulta(consulta.Id);
-
-        Assert.IsType<OkObjectResult>(resultado);
-        Assert.Equal(EstadoConsulta.Cancelado, db.Consultas.Find(consulta.Id)!.Estado);
-    }
+    private static ConsultasController Controlador(ConsultasPlan.Data.AppDbContext db) =>
+        new(db, Reloj.Fijo());
 
     // Problema #6 — No hay máquina de estados.
     // Una consulta ya cancelada acepta que se le registre una inasistencia.
@@ -49,11 +33,9 @@ public class ConsultasControllerTests
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
         var consulta = db.AgregarConsulta(
-            afiliado, profesional, DateTime.Now.AddDays(-10), EstadoConsulta.Cancelado);
+            afiliado, profesional, Reloj.Ahora.AddDays(-10), EstadoConsulta.Cancelado);
 
-        var controller = new ConsultasController(db);
-
-        var resultado = await controller.MarcarInasistencia(consulta.Id);
+        var resultado = await Controlador(db).MarcarInasistencia(consulta.Id);
 
         Assert.IsType<OkObjectResult>(resultado);
         Assert.Equal(EstadoConsulta.Inasistencia, db.Consultas.Find(consulta.Id)!.Estado);
@@ -68,11 +50,9 @@ public class ConsultasControllerTests
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
         var consulta = db.AgregarConsulta(
-            afiliado, profesional, new DateTime(DateTime.Now.Year, 3, 10), EstadoConsulta.Cancelado);
+            afiliado, profesional, Reloj.Ahora.AddDays(-10), EstadoConsulta.Cancelado);
 
-        var controller = new ConsultasController(db);
-
-        var resultado = await controller.RegistrarAtencion(consulta.Id);
+        var resultado = await Controlador(db).RegistrarAtencion(consulta.Id);
 
         Assert.IsType<OkObjectResult>(resultado);
         Assert.Equal(EstadoConsulta.Atendido, db.Consultas.Find(consulta.Id)!.Estado);
@@ -88,11 +68,9 @@ public class ConsultasControllerTests
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
         var consulta = db.AgregarConsulta(
-            afiliado, profesional, DateTime.Now.AddDays(-10), EstadoConsulta.Atendido);
+            afiliado, profesional, Reloj.Ahora.AddDays(-10), EstadoConsulta.Atendido);
 
-        var controller = new ConsultasController(db);
-
-        var resultado = await controller.ActualizarEstado(
+        var resultado = await Controlador(db).ActualizarEstado(
             consulta.Id, new ActualizarEstadoRequest { Estado = EstadoConsulta.Pendiente });
 
         Assert.IsType<OkObjectResult>(resultado);
@@ -107,12 +85,10 @@ public class ConsultasControllerTests
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
-        var consulta = db.AgregarConsulta(afiliado, profesional, DateTime.Now.AddDays(5));
-
-        var controller = new ConsultasController(db);
+        var consulta = db.AgregarConsulta(afiliado, profesional, Reloj.Ahora.AddDays(5));
         var estadoInexistente = (EstadoConsulta)99;
 
-        var resultado = await controller.ActualizarEstado(
+        var resultado = await Controlador(db).ActualizarEstado(
             consulta.Id, new ActualizarEstadoRequest { Estado = estadoInexistente });
 
         Assert.IsType<OkObjectResult>(resultado);
@@ -129,13 +105,11 @@ public class ConsultasControllerTests
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
 
-        var controller = new ConsultasController(db);
-
-        var resultado = await controller.CrearConsulta(new Consulta
+        var resultado = await Controlador(db).CrearConsulta(new Consulta
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
-            FechaHora = new DateTime(1990, 1, 1),
+            FechaHora = Reloj.Ahora.AddYears(-30),
             Modalidad = ModalidadConsulta.Presencial,
             Motivo = "Consulta en el pasado"
         });
@@ -151,12 +125,10 @@ public class ConsultasControllerTests
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
-        var ocupado = new DateTime(DateTime.Now.Year + 1, 6, 10, 10, 0, 0);
+        var ocupado = Reloj.Ahora.AddDays(30);
         db.AgregarConsulta(afiliado, profesional, ocupado, EstadoConsulta.Confirmado);
 
-        var controller = new ConsultasController(db);
-
-        var resultado = await controller.CrearConsulta(new Consulta
+        var resultado = await Controlador(db).CrearConsulta(new Consulta
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
@@ -179,13 +151,11 @@ public class ConsultasControllerTests
         var profesional = db.AgregarProfesional();
         var afiliadosAntes = db.Afiliados.Count();
 
-        var controller = new ConsultasController(db);
-
-        await controller.CrearConsulta(new Consulta
+        await Controlador(db).CrearConsulta(new Consulta
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
-            FechaHora = DateTime.Now.AddDays(10),
+            FechaHora = Reloj.Ahora.AddDays(10),
             Modalidad = ModalidadConsulta.Presencial,
             Motivo = "Con afiliado anidado",
             Afiliado = new Afiliado { NombreCompleto = "Inyectado", DNI = "99999999" }

@@ -68,13 +68,20 @@ export default {
     }
   },
   methods: {
+    // El input datetime-local entrega "2026-12-01T10:00", sin zona horaria.
+    // Enviado así, el backend no puede saber a qué instante se refiere. Se
+    // convierte a ISO-8601 con sufijo Z: el usuario elige una hora local y el
+    // sistema persiste siempre el instante en UTC.
+    aIsoUtc(fechaHoraLocal) {
+      return new Date(fechaHoraLocal).toISOString()
+    },
     async guardar() {
       try {
         await consultasApi.create({
           afiliadoId: Number(this.form.afiliadoId),
           profesionalId: Number(this.form.profesionalId),
           modalidad: this.form.modalidad,
-          fechaHora: this.form.fechaHora,
+          fechaHora: this.aIsoUtc(this.form.fechaHora),
           motivo: this.form.motivo
         })
         this.$router.push('/consultas')
