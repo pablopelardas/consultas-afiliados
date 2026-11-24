@@ -49,8 +49,8 @@ public class PersistenciaUtcTests : IDisposable
             {
                 NombreCompleto = "Afiliado",
                 DNI = "30000000",
-                createdAt = instante,
-                isActive = true
+                FechaAlta = instante,
+                Activo = true
             });
             db.SaveChanges();
         }
@@ -59,8 +59,8 @@ public class PersistenciaUtcTests : IDisposable
         {
             var leido = db.Afiliados.Single();
 
-            Assert.Equal(DateTimeKind.Utc, leido.createdAt.Kind);
-            Assert.Equal(instante, leido.createdAt);
+            Assert.Equal(DateTimeKind.Utc, leido.FechaAlta.Kind);
+            Assert.Equal(instante, leido.FechaAlta);
         }
     }
 
@@ -78,8 +78,8 @@ public class PersistenciaUtcTests : IDisposable
             {
                 NombreCompleto = "Afiliado",
                 DNI = "30000000",
-                createdAt = instante,
-                isActive = true
+                FechaAlta = instante,
+                Activo = true
             });
             db.SaveChanges();
         }
@@ -88,7 +88,7 @@ public class PersistenciaUtcTests : IDisposable
         {
             var leido = db.Afiliados.Single();
 
-            Assert.Equal(instante, leido.createdAt.ToUniversalTime());
+            Assert.Equal(instante, leido.FechaAlta.ToUniversalTime());
         }
     }
 
@@ -105,7 +105,7 @@ public class PersistenciaUtcTests : IDisposable
                 DNI = "30000001",
                 Bloqueado = true,
                 FechaBloqueo = bloqueo,
-                isActive = true
+                Activo = true
             });
             db.SaveChanges();
         }
@@ -130,7 +130,7 @@ public class PersistenciaUtcTests : IDisposable
                 NombreCompleto = "Afiliado activo",
                 DNI = "30000002",
                 FechaBloqueo = null,
-                isActive = true
+                Activo = true
             });
             db.SaveChanges();
         }
@@ -154,8 +154,8 @@ public class PersistenciaUtcTests : IDisposable
             {
                 NombreCompleto = "Afiliado",
                 DNI = "30000003",
-                createdAt = local,
-                isActive = true
+                FechaAlta = local,
+                Activo = true
             });
             db.SaveChanges();
         }
@@ -164,8 +164,8 @@ public class PersistenciaUtcTests : IDisposable
         {
             var leido = db.Afiliados.Single();
 
-            Assert.Equal(DateTimeKind.Utc, leido.createdAt.Kind);
-            Assert.Equal(local.ToUniversalTime(), leido.createdAt);
+            Assert.Equal(DateTimeKind.Utc, leido.FechaAlta.Kind);
+            Assert.Equal(local.ToUniversalTime(), leido.FechaAlta);
         }
     }
 }

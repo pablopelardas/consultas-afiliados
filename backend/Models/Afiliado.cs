@@ -11,6 +11,14 @@ public class Afiliado
     public int ConsultasUsadas { get; set; }
     public bool Bloqueado { get; set; }
     public DateTime? FechaBloqueo { get; set; }
-    public DateTime createdAt { get; set; }
-    public bool isActive { get; set; }
+
+    public DateTime FechaAlta { get; set; }
+
+    /// <summary>
+    /// Baja lógica. Un afiliado inactivo desaparece de las vistas operativas,
+    /// pero su registro y sus consultas permanecen.
+    /// </summary>
+    public bool Activo { get; set; }
+
+    public DateTime? FechaBaja { get; set; }
 }

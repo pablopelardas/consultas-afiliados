@@ -37,8 +37,8 @@ public static class ContextoDePrueba
             Telefono = "1100000000",
             Plan = "Plan Integral",
             Bloqueado = bloqueado,
-            createdAt = new DateTime(2024, 1, 1),
-            isActive = true
+            FechaAlta = new DateTime(2024, 1, 1),
+            Activo = true
         };
 
         db.Afiliados.Add(afiliado);
