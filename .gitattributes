@@ -1,0 +1,14 @@
+# Normaliza los finales de línea en el índice a LF, independientemente del SO
+# del colaborador. Sin esto, un clon en Windows produce diffs de archivos
+# completos al cambiar core.autocrlf.
+* text=auto eol=lf
+
+# Visual Studio escribe el .sln con CRLF y lo reescribe si lo encuentra en LF.
+*.sln  text eol=crlf
+
+# Binarios: nunca convertir
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.db   binary
