@@ -491,6 +491,86 @@ cliente se renombra en consecuencia. El texto de un botón es parte del contrato
 con quien lo usa: si dice que borra y da de baja, la próxima decisión que tome
 el operador va a estar basada en algo falso.
 
+### 3.7 Contratos de la API — `fix/contratos-api`
+
+#### Entrada: el over-posting
+
+El código base recibía las entidades de EF directamente:
+
+```csharp
+public async Task<IActionResult> CrearConsulta([FromBody] Consulta consulta)
+public async Task<IActionResult> Create([FromBody] Afiliado afiliado)
+```
+
+Eso expone **todas** las propiedades de la entidad como campos de entrada. Un
+cliente podía enviar `Bloqueado`, `ConsultasUsadas`, `Activo`, `Estado` o un
+objeto `Afiliado` anidado, y EF lo persistía. El test de caracterización lo
+demostraba: enviar una consulta con un afiliado anidado **creaba un afiliado
+nuevo** que nadie pidió.
+
+La corrección no es agregar comprobaciones. Es declarar qué acepta cada
+operación:
+
+| Operación | Contrato |
+|---|---|
+| `POST /consultas` | `CrearConsultaRequest` |
+| `POST /afiliados` | `CrearAfiliadoRequest` |
+| `PUT /afiliados/{id}` | `ActualizarAfiliadoRequest` |
+| `PUT /consultas/{id}/estado` | `ActualizarEstadoRequest` |
+
+Lo que no está en el contrato **no entra**, y no porque alguien se acordó de
+comprobarlo, sino porque no existe en el tipo. El test de caracterización del
+afiliado anidado ya no se puede siquiera escribir: la propiedad no existe.
+
+`ActualizarAfiliadoRequest` deja afuera `Plan`, `Bloqueado`, `ConsultasUsadas`
+y `Activo` a propósito. Cambiar el plan, bloquear o dar de baja son operaciones
+con reglas propias, no una edición de ficha de contacto.
+
+#### Validación
+
+Las reglas de forma viven en el contrato como atributos, de modo que
+`[ApiController]` las aplique antes de entrar al método:
+
+| Campo | Regla |
+|---|---|
+| `NombreCompleto` | Obligatorio, 3 a 120 caracteres |
+| `DNI` | Obligatorio, 7 u 8 dígitos sin puntos ni espacios |
+| `Email` | Obligatorio, formato válido |
+| `Telefono` | Obligatorio, 8 a 15 dígitos |
+| `Motivo` | Obligatorio, 3 a 300 caracteres |
+| `Modalidad` / `Estado` | Debe pertenecer al enum |
+
+Dos reglas no son de forma y viven en el controlador:
+
+- **La fecha debe ser futura.** Depende del reloj, que es una dependencia
+  inyectada; un atributo no puede acceder a él. El código base aceptaba agendar
+  en 1990.
+- **El DNI es único.** El documento identifica a la persona: dos registros con
+  el mismo DNI son el mismo afiliado cargado dos veces, y a partir de ahí el
+  historial clínico y el cupo quedan partidos entre dos afiliados que son uno
+  solo. Devuelve `409`, porque es un conflicto con el estado existente.
+
+#### Salida
+
+Devolver entidades de EF tiene tres consecuencias: expone campos internos
+(`Activo`, `FechaBaja`, `SedeId`), **ata el contrato público al esquema** —un
+cambio del modelo rompe a los clientes sin aviso— y arrastra el grafo de
+navegación completo.
+
+Esto último explica una línea del código base:
+
+```csharp
+options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+```
+
+Ese ajuste era un paliativo para poder serializar entidades con navegación
+circular. **Se elimina**: los contratos de salida no tienen ciclos porque no
+los necesitan. Cuando la causa se corrige, el síntoma y su parche desaparecen
+juntos.
+
+Los contratos preservan exactamente las formas que el frontend ya consume, de
+modo que el cambio no lo rompe.
+
 ---
 
 ## 4. Problemas detectados en el código base
@@ -509,8 +589,8 @@ corregido, planificado o fuera de alcance.
 | 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Corregido |
 | 6 | Sin máquina de estados: se puede marcar inasistencia sobre una consulta cancelada, o registrar atención sobre una cancelada | `ConsultasController.cs` | Corregido |
 | 7 | `DateTime.Now` y `DateTime.UtcNow` mezclados: se persiste en UTC y se compara contra hora local. En Argentina son 3 horas de desvío sobre la ventana de 24 horas y sobre el cálculo de "año en curso". Se suma la pérdida de `DateTimeKind` al leer de SQLite | Varios | Corregido |
-| 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Planificado |
-| 9 | Sin validación de entrada: no hay `[Required]`, ni unicidad de DNI, ni formato de email, ni verificación de que `FechaHora` sea futura | Controllers | Planificado |
+| 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Corregido |
+| 9 | Sin validación de entrada: no hay `[Required]`, ni unicidad de DNI, ni formato de email, ni verificación de que `FechaHora` sea futura | Controllers | Corregido |
 | 10 | Detección de superposición incompleta: compara igualdad exacta de `FechaHora`, sin duración de consulta ni índice único que evite la condición de carrera | `ConsultasController.cs:54` | Parcial (ver §6) |
 | 11 | `Afiliado.ConsultasUsadas` es un contador que nadie actualiza. Dato desnormalizado y engañoso | `Models/Afiliado.cs` | Ver §5.9 |
 | 12 | `Afiliado.FechaBloqueo` nunca se escribe | `Models/Afiliado.cs` | Planificado |
@@ -518,7 +598,7 @@ corregido, planificado o fuera de alcance.
 | 14 | `Especialidad` es texto libre. La política de cupo dependería de comparar contra el literal `"Nutrición"` | `Models/Profesional.cs` | Planificado (ver §5.8) |
 | 15 | `EnsureCreated()` sin migraciones, en un sistema descrito como productivo: el esquema no puede evolucionar de forma controlada | `Program.cs` | Planificado |
 | 16 | Nomenclatura: `createdAt` e `isActive` en camelCase | `Models/Afiliado.cs` | Corregido — propiedades renombradas; las columnas conservan su nombre para no requerir migración |
-| 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Planificado |
+| 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Parcial — las entidades ya no son contrato de API y `IgnoreCycles` se eliminó; la capa de servicios va en `refactor/capa-servicios` |
 | 18 | Sin manejo global de errores, sin `ProblemDetails`, sin logging | `Program.cs` | Corregido — logging estructurado queda fuera de alcance (§6) |
 | 19 | Sin tests | — | Corregido |
 | 20 | CORS `AllowAnyOrigin` y Swagger expuesto en todos los ambientes | `Program.cs` | Ver §6 |

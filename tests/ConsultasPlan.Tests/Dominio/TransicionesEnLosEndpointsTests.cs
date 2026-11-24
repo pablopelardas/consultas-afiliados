@@ -1,4 +1,5 @@
 using ConsultasPlan.Controllers;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;

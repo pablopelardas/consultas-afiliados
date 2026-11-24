@@ -27,12 +27,13 @@ public static class ContextoDePrueba
     public static Afiliado AgregarAfiliado(
         this AppDbContext db,
         string nombre = "Afiliado de Prueba",
-        bool bloqueado = false)
+        bool bloqueado = false,
+        string dni = "30000000")
     {
         var afiliado = new Afiliado
         {
             NombreCompleto = nombre,
-            DNI = "30000000",
+            DNI = dni,
             Email = "afiliado@test.local",
             Telefono = "1100000000",
             Plan = "Plan Integral",

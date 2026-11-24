@@ -1,4 +1,5 @@
 using ConsultasPlan.Controllers;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
@@ -78,7 +79,8 @@ public class BajaLogicaAfiliadoTests
         await Afiliados(db).Delete(baja.Id);
 
         var resultado = await Afiliados(db).GetAll();
-        var listado = Assert.IsType<List<Afiliado>>(Assert.IsType<OkObjectResult>(resultado).Value);
+        var listado = Assert.IsAssignableFrom<IEnumerable<AfiliadoResponse>>(
+            Assert.IsType<OkObjectResult>(resultado).Value).ToList();
 
         Assert.Single(listado);
         Assert.Equal(vigente.Id, listado[0].Id);
@@ -104,7 +106,13 @@ public class BajaLogicaAfiliadoTests
         await Afiliados(db).Delete(afiliado.Id);
 
         var resultado = await Afiliados(db).Update(
-            afiliado.Id, new Afiliado { NombreCompleto = "Nombre nuevo" });
+            afiliado.Id, new ActualizarAfiliadoRequest
+            {
+                NombreCompleto = "Nombre nuevo",
+                DNI = "31111111",
+                Email = "nuevo@test.local",
+                Telefono = "1145678901"
+            });
 
         AssertNoEncontrado(resultado);
         Assert.NotEqual("Nombre nuevo", db.Afiliados.Find(afiliado.Id)!.NombreCompleto);
@@ -121,7 +129,7 @@ public class BajaLogicaAfiliadoTests
 
         await Afiliados(db).Delete(afiliado.Id);
 
-        var resultado = await Consultas(db).CrearConsulta(new Consulta
+        var resultado = await Consultas(db).CrearConsulta(new CrearConsultaRequest
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
@@ -179,15 +187,22 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
 
-        var resultado = await Afiliados(db).Create(new Afiliado
+        var resultado = await Afiliados(db).Create(new CrearAfiliadoRequest
         {
             NombreCompleto = "Nuevo Afiliado",
-            DNI = "40000000"
+            DNI = "40000000",
+            Email = "nuevo@test.local",
+            Telefono = "1145678901"
         });
 
-        var creado = Assert.IsType<Afiliado>(Assert.IsType<CreatedAtActionResult>(resultado).Value);
-        Assert.True(creado.Activo);
-        Assert.Null(creado.FechaBaja);
+        var creado = Assert.IsType<AfiliadoResponse>(
+            Assert.IsType<CreatedAtActionResult>(resultado).Value);
         Assert.Equal(Reloj.Ahora, creado.FechaAlta);
+
+        // Activo y FechaBaja no se exponen en el contrato de salida: son
+        // estado interno. Se verifican contra la entidad persistida.
+        var persistido = db.Afiliados.Find(creado.Id)!;
+        Assert.True(persistido.Activo);
+        Assert.Null(persistido.FechaBaja);
     }
 }

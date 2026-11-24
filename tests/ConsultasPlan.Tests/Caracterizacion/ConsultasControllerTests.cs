@@ -1,4 +1,4 @@
-using ConsultasPlan.Controllers;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
 using Microsoft.AspNetCore.Mvc;
@@ -11,40 +11,16 @@ namespace ConsultasPlan.Tests.Caracterizacion;
 /// </summary>
 /// <remarks>
 /// Un test de caracterización no afirma que el comportamiento sea correcto:
-/// afirma que es el que hay. Sirve como red antes de refactorizar y como
-/// evidencia reproducible de cada defecto. Cuando la rama de corrección
-/// correspondiente cambie la conducta, estos tests fallarán — y ese fallo es
-/// la confirmación de que el fix hizo efecto.
+/// afirma que es el que hay. Cuando la rama de corrección correspondiente
+/// cambia la conducta, el test falla — y ese fallo es la confirmación de que el
+/// fix hizo efecto. Por eso esta clase se vacía a medida que avanza el trabajo.
 ///
-/// Cada test referencia el número de problema del inventario en
-/// docs/DOCUMENTO-TECNICO.md §4.
+/// Lo que queda acá es el problema #10 del inventario, cuyo alcance completo
+/// —modelar duración de consulta y agenda del profesional— excede el challenge
+/// y está declarado fuera de alcance en §6 del documento técnico.
 /// </remarks>
 public class ConsultasControllerTests
 {
-    private static ConsultasController Controlador(ConsultasPlan.Data.AppDbContext db) =>
-        new(db, Reloj.Fijo());
-
-    // Problema #9 — No se valida que la fecha solicitada sea futura.
-    // Se puede agendar una consulta en el pasado.
-    [Fact]
-    public async Task Crear_consulta_con_fecha_en_el_pasado_es_aceptado()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-
-        var resultado = await Controlador(db).CrearConsulta(new Consulta
-        {
-            AfiliadoId = afiliado.Id,
-            ProfesionalId = profesional.Id,
-            FechaHora = Reloj.Ahora.AddYears(-30),
-            Modalidad = ModalidadConsulta.Presencial,
-            Motivo = "Consulta en el pasado"
-        });
-
-        Assert.IsType<CreatedAtActionResult>(resultado);
-    }
-
     // Problema #10 — La detección de superposición compara igualdad exacta de
     // FechaHora. Un minuto de diferencia sobre el mismo profesional pasa.
     [Fact]
@@ -56,7 +32,9 @@ public class ConsultasControllerTests
         var ocupado = Reloj.Ahora.AddDays(30);
         db.AgregarConsulta(afiliado, profesional, ocupado, EstadoConsulta.Confirmado);
 
-        var resultado = await Controlador(db).CrearConsulta(new Consulta
+        var controlador = new ConsultasPlan.Controllers.ConsultasController(db, Reloj.Fijo());
+
+        var resultado = await controlador.CrearConsulta(new CrearConsultaRequest
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
@@ -66,29 +44,5 @@ public class ConsultasControllerTests
         });
 
         Assert.IsType<CreatedAtActionResult>(resultado);
-    }
-
-    // Problema #8 — Over-posting. El endpoint recibe la entidad de EF, así que
-    // el cliente puede enviar un Afiliado anidado y EF lo persiste como un
-    // afiliado nuevo, sin que nadie lo haya pedido.
-    [Fact]
-    public async Task Crear_consulta_con_un_afiliado_anidado_persiste_un_afiliado_nuevo()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-        var afiliadosAntes = db.Afiliados.Count();
-
-        await Controlador(db).CrearConsulta(new Consulta
-        {
-            AfiliadoId = afiliado.Id,
-            ProfesionalId = profesional.Id,
-            FechaHora = Reloj.Ahora.AddDays(10),
-            Modalidad = ModalidadConsulta.Presencial,
-            Motivo = "Con afiliado anidado",
-            Afiliado = new Afiliado { NombreCompleto = "Inyectado", DNI = "99999999" }
-        });
-
-        Assert.Equal(afiliadosAntes + 1, db.Afiliados.Count());
     }
 }

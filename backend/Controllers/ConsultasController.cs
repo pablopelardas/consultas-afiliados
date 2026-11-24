@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
 using ConsultasPlan.Dominio;
 using ConsultasPlan.Helpers;
@@ -48,7 +49,7 @@ public class ConsultasController : ControllerBase
             .Include(c => c.Afiliado)
             .Include(c => c.Profesional)
             .ToListAsync();
-        return Ok(consultas);
+        return Ok(consultas.Select(ConsultaResponse.De));
     }
 
     [HttpGet("{id}")]
@@ -58,14 +59,23 @@ public class ConsultasController : ControllerBase
             .Include(c => c.Afiliado)
             .Include(c => c.Profesional)
             .FirstOrDefaultAsync(c => c.Id == id);
-        if (consulta == null) return NotFound();
-        return Ok(consulta);
+        if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
+        return Ok(ConsultaResponse.De(consulta));
     }
 
     [HttpPost]
-    public async Task<IActionResult> CrearConsulta([FromBody] Consulta consulta)
+    public async Task<IActionResult> CrearConsulta([FromBody] CrearConsultaRequest request)
     {
-        var afiliado = await _context.Afiliados.FindAsync(consulta.AfiliadoId);
+        // La fecha se valida acá y no con un atributo porque depende del reloj,
+        // que es una dependencia inyectada.
+        if (request.FechaHora <= Ahora)
+        {
+            ModelState.AddModelError(nameof(request.FechaHora),
+                "La consulta debe agendarse en una fecha futura.");
+            return ValidationProblem(ModelState);
+        }
+
+        var afiliado = await _context.Afiliados.FindAsync(request.AfiliadoId);
         if (afiliado == null)
             return NoEncontrado("El afiliado indicado no existe.");
 
@@ -77,22 +87,31 @@ public class ConsultasController : ControllerBase
         if (afiliado.Bloqueado)
             return Conflicto("El afiliado se encuentra bloqueado para agendar consultas.");
 
-        var profesionalExiste = await _context.Profesionales.AnyAsync(p => p.Id == consulta.ProfesionalId);
+        var profesionalExiste = await _context.Profesionales.AnyAsync(p => p.Id == request.ProfesionalId);
         if (!profesionalExiste)
             return NoEncontrado("El profesional indicado no existe.");
 
         var consultaConflicto = await _context.Consultas.AnyAsync(c =>
-            c.ProfesionalId == consulta.ProfesionalId &&
-            c.FechaHora == consulta.FechaHora &&
+            c.ProfesionalId == request.ProfesionalId &&
+            c.FechaHora == request.FechaHora &&
             c.Estado != EstadoConsulta.Cancelado);
         if (consultaConflicto)
             return Conflicto("El profesional ya tiene una consulta agendada en ese horario.");
 
-        consulta.FechaCreacion = Ahora;
-        consulta.Estado = EstadoConsulta.Pendiente;
+        var consulta = new Consulta
+        {
+            AfiliadoId = request.AfiliadoId,
+            ProfesionalId = request.ProfesionalId,
+            FechaHora = request.FechaHora,
+            Modalidad = request.Modalidad,
+            Motivo = request.Motivo,
+            FechaCreacion = Ahora,
+            Estado = EstadoConsulta.Pendiente
+        };
+
         _context.Consultas.Add(consulta);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetById), new { id = consulta.Id }, consulta);
+        return CreatedAtAction(nameof(GetById), new { id = consulta.Id }, ConsultaResponse.De(consulta));
     }
 
     /// <summary>
@@ -122,7 +141,7 @@ public class ConsultasController : ControllerBase
 
         consulta.Estado = EstadoConsulta.Cancelado;
         await _context.SaveChangesAsync();
-        return Ok(consulta);
+        return Ok(ConsultaResponse.De(consulta));
     }
 
     [HttpPost("{id}/inasistencia")]
@@ -139,7 +158,7 @@ public class ConsultasController : ControllerBase
 
         consulta.Estado = EstadoConsulta.Inasistencia;
         await _context.SaveChangesAsync();
-        return Ok(consulta);
+        return Ok(ConsultaResponse.De(consulta));
     }
 
     [HttpPost("{id}/atencion")]
@@ -156,22 +175,14 @@ public class ConsultasController : ControllerBase
 
         consulta.Estado = EstadoConsulta.Atendido;
         await _context.SaveChangesAsync();
-        return Ok(consulta);
+        return Ok(ConsultaResponse.De(consulta));
     }
 
     [HttpPut("{id}/estado")]
     public async Task<IActionResult> ActualizarEstado(int id, [FromBody] ActualizarEstadoRequest request)
     {
-        // Un entero fuera del enum es entrada malformada, no un conflicto de
-        // estado: el deserializador de System.Text.Json acepta cualquier valor
-        // numérico y lo persistía tal cual.
-        if (!Enum.IsDefined(request.Estado))
-        {
-            ModelState.AddModelError(nameof(request.Estado),
-                $"'{(int)request.Estado}' no es un estado de consulta válido.");
-            return ValidationProblem(ModelState);
-        }
-
+        // Que el valor pertenezca al enum lo valida [EnumDataType] en el
+        // contrato: [ApiController] rechaza con 400 antes de llegar acá.
         var consulta = await _context.Consultas.FindAsync(id);
         if (consulta == null) return NoEncontrado("La consulta indicada no existe.");
 
@@ -182,11 +193,6 @@ public class ConsultasController : ControllerBase
 
         consulta.Estado = request.Estado;
         await _context.SaveChangesAsync();
-        return Ok(consulta);
+        return Ok(ConsultaResponse.De(consulta));
     }
-}
-
-public class ActualizarEstadoRequest
-{
-    public EstadoConsulta Estado { get; set; }
 }
