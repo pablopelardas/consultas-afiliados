@@ -357,6 +357,53 @@ La API de prueba sustituye SQLite por una base en memoria y el reloj por
 `FakeTimeProvider`, usando `ConfigureTestServices` — que corre *después* de los
 registros de la aplicación y por lo tanto efectivamente reemplaza al original.
 
+### 3.5 Ciclo de vida de la consulta — `fix/ciclo-vida-consulta`
+
+El código base no tenía ninguna noción de qué cambios de estado son posibles:
+cada endpoint asignaba `consulta.Estado` directamente. Se podía registrar una
+inasistencia sobre una consulta cancelada, registrar la atención de una
+cancelada, o devolver a `Pendiente` una ya atendida.
+
+#### La tabla
+
+| Desde | Hacia | Por qué |
+|---|---|---|
+| `Pendiente` | `Confirmado`, `Cancelado`, `Atendido`, `Inasistencia` | El turno existe y todavía no ocurrió. El afiliado puede no confirmar y aun así ser atendido |
+| `Confirmado` | `Cancelado`, `Atendido`, `Inasistencia` | No vuelve a `Pendiente`: retroceder no describe ningún hecho ocurrido |
+| `Atendido` | — | Terminal |
+| `Cancelado` | — | Terminal (§5.7) |
+| `Inasistencia` | `Atendido` | Única corrección admitida |
+
+**Ningún estado transiciona hacia sí mismo.** Cancelar una consulta ya cancelada
+devuelve `409` con un mensaje explícito, en lugar de fingir éxito. Para quien
+opera el sistema, saber que no pasó nada es información; un `200` que no cambió
+nada, no.
+
+Sobre `Inasistencia → Atendido`: una inasistencia mal cargada **perjudica al
+afiliado** —consume cupo y puede derivar en bloqueo—, así que no puede ser
+irreversible. Es la única corrección prevista, y es deliberadamente angosta.
+
+#### Dónde vive la regla
+
+`CicloDeVidaConsulta` es una clase de dominio **pura**: no accede a la base, no
+produce efectos y no depende del reloj. Recibe dos estados y responde si el
+paso entre ellos existe.
+
+Eso permite verificar la tabla completa —todas las combinaciones de cinco
+estados— sin levantar infraestructura, en tests que describen el dominio en
+lugar de la mecánica de montarlo. Los cuatro endpoints la consultan antes de
+asignar.
+
+Es además el patrón que usará la política de cupo de la Parte 2: regla pura
+detrás de una interfaz, orquestación afuera.
+
+#### El endpoint genérico sobrevive, validado
+
+`PUT /{id}/estado` no se elimina. El flujo operativo del personal
+—`Pendiente → Confirmado → Atendido`— necesita una vía directa, y las
+transiciones válidas no se tocaron. Lo que cambia es que ahora consulta la
+tabla: dejó de ser la puerta por la que se evadían las reglas del dominio.
+
 ---
 
 ## 4. Problemas detectados en el código base
@@ -372,8 +419,8 @@ corregido, planificado o fuera de alcance.
 | 2 | No compila: falta `using` de `Helpers` | `ConsultasController.cs:102` | Corregido |
 | 3 | `GET` que muta estado: cancelar una consulta responde a `[HttpGet]`. Un prefetch del navegador o un crawler puede cancelar consultas | `ConsultasController.cs:68` | Corregido |
 | 4 | Ventana de cancelación mal calculada: valida `FromHours(23)` mientras el mensaje al usuario dice 24 horas | `ConsultasController.cs:74` | Corregido |
-| 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Parcial — la validación del valor recibido está corregida; las transiciones inválidas van en `fix/ciclo-vida-consulta` |
-| 6 | Sin máquina de estados: se puede marcar inasistencia sobre una consulta cancelada, o registrar atención sobre una cancelada | `ConsultasController.cs` | Planificado |
+| 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Corregido |
+| 6 | Sin máquina de estados: se puede marcar inasistencia sobre una consulta cancelada, o registrar atención sobre una cancelada | `ConsultasController.cs` | Corregido |
 | 7 | `DateTime.Now` y `DateTime.UtcNow` mezclados: se persiste en UTC y se compara contra hora local. En Argentina son 3 horas de desvío sobre la ventana de 24 horas y sobre el cálculo de "año en curso". Se suma la pérdida de `DateTimeKind` al leer de SQLite | Varios | Corregido |
 | 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Planificado |
 | 9 | Sin validación de entrada: no hay `[Required]`, ni unicidad de DNI, ni formato de email, ni verificación de que `FechaHora` sea futura | Controllers | Planificado |
@@ -534,14 +581,36 @@ prestación que la política declara fuera de su alcance.
 Caso sembrado en el afiliado 5: una virtual atendida y una presencial
 cancelada. Ninguna consume.
 
-### 5.7 Reactivar una consulta cancelada revalida el cupo
+### 5.7 Una consulta cancelada no se reactiva
 
-**Resolución:** cualquier transición que lleve una consulta desde `Cancelado` a
-un estado que consume cupo vuelve a validar la política.
+**Resolución:** `Cancelado` es un estado terminal. No existe transición desde
+una consulta cancelada hacia ningún otro estado.
 
-**Criterio:** sin esto, `PUT /{id}/estado` es la vía por la que se evade la
-política completa: se cancela una consulta, se libera el cupo, se agenda otra y
-luego se reactiva la cancelada.
+**Criterio:** el riesgo a cubrir era que `PUT /{id}/estado` se convirtiera en la
+vía para evadir la política: cancelar una consulta, liberar el cupo, agendar
+otra y luego reactivar la cancelada, terminando con dos consultas sobre un cupo
+de una.
+
+La primera formulación de este supuesto resolvía eso **revalidando el cupo en la
+reactivación**. Al escribir la tabla de transiciones quedó claro que había una
+respuesta más simple y más sólida: no permitir la reactivación.
+
+Una cancelación no es un cambio de opinión reversible: **liberó el cupo del
+afiliado y liberó la franja horaria del profesional**, que otro afiliado pudo
+haber tomado en el intervalo. Reactivar exige revalidar el cupo, la
+disponibilidad del profesional y el estado del afiliado — es decir, repetir
+todas las validaciones de agendar. Si hay que repetirlas, lo correcto es
+**agendar de nuevo**: se crea una consulta que las atraviesa todas por el camino
+normal, y la cancelada queda en el historial como lo que fue.
+
+Se registra el cambio de criterio porque el supuesto original quedó escrito
+antes de modelar el ciclo de vida completo.
+
+**Contra registrada:** una cancelación por error operativo —el administrativo
+canceló la consulta equivocada— obliga a agendar de nuevo y la consulta original
+conserva un desenlace que no ocurrió. Se acepta: el historial refleja lo que el
+sistema registró, y la corrección queda trazable como dos registros en lugar de
+uno reescrito.
 
 ### 5.8 Identificación de la especialidad
 

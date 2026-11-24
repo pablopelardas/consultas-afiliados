@@ -24,59 +24,6 @@ public class ConsultasControllerTests
     private static ConsultasController Controlador(ConsultasPlan.Data.AppDbContext db) =>
         new(db, Reloj.Fijo());
 
-    // Problema #6 — No hay máquina de estados.
-    // Una consulta ya cancelada acepta que se le registre una inasistencia.
-    [Fact]
-    public async Task Marcar_inasistencia_sobre_una_consulta_cancelada_es_aceptado()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-        var consulta = db.AgregarConsulta(
-            afiliado, profesional, Reloj.Ahora.AddDays(-10), EstadoConsulta.Cancelado);
-
-        var resultado = await Controlador(db).MarcarInasistencia(consulta.Id);
-
-        Assert.IsType<OkObjectResult>(resultado);
-        Assert.Equal(EstadoConsulta.Inasistencia, db.Consultas.Find(consulta.Id)!.Estado);
-    }
-
-    // Problema #6 — Misma causa: se puede registrar la atención de una consulta
-    // que fue cancelada.
-    [Fact]
-    public async Task Registrar_atencion_sobre_una_consulta_cancelada_es_aceptado()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-        var consulta = db.AgregarConsulta(
-            afiliado, profesional, Reloj.Ahora.AddDays(-10), EstadoConsulta.Cancelado);
-
-        var resultado = await Controlador(db).RegistrarAtencion(consulta.Id);
-
-        Assert.IsType<OkObjectResult>(resultado);
-        Assert.Equal(EstadoConsulta.Atendido, db.Consultas.Find(consulta.Id)!.Estado);
-    }
-
-    // Problema #5 — PUT /{id}/estado no valida nada.
-    // Permite pasar de Atendido a Pendiente, una transición que no existe en el
-    // dominio, y saltea toda regla de negocio.
-    [Fact]
-    public async Task Actualizar_estado_permite_volver_de_Atendido_a_Pendiente()
-    {
-        using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
-        var consulta = db.AgregarConsulta(
-            afiliado, profesional, Reloj.Ahora.AddDays(-10), EstadoConsulta.Atendido);
-
-        var resultado = await Controlador(db).ActualizarEstado(
-            consulta.Id, new ActualizarEstadoRequest { Estado = EstadoConsulta.Pendiente });
-
-        Assert.IsType<OkObjectResult>(resultado);
-        Assert.Equal(EstadoConsulta.Pendiente, db.Consultas.Find(consulta.Id)!.Estado);
-    }
-
     // Problema #9 — No se valida que la fecha solicitada sea futura.
     // Se puede agendar una consulta en el pasado.
     [Fact]
