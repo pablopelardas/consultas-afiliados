@@ -1,5 +1,6 @@
 using ConsultasPlan.Contratos;
 using ConsultasPlan.Data;
+using ConsultasPlan.Dominio;
 using ConsultasPlan.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -89,6 +90,22 @@ public class AfiliadoService : IAfiliadoService
         afiliado.FechaBaja = Ahora;
         await _contexto.SaveChangesAsync();
         return ServiceResult.Ok();
+    }
+
+    public async Task<IReadOnlyDictionary<int, int>> ConsultasFuturasAgendadas(
+        IReadOnlyCollection<int> afiliadoIds)
+    {
+        if (afiliadoIds.Count == 0) return new Dictionary<int, int>();
+
+        var ahora = Ahora;
+        return await _contexto.Consultas
+            .Where(c => c.AfiliadoId != null
+                        && afiliadoIds.Contains(c.AfiliadoId.Value)
+                        && c.FechaHora > ahora
+                        && CicloDeVidaConsulta.OcupanAgenda.Contains(c.Estado))
+            .GroupBy(c => c.AfiliadoId!.Value)
+            .Select(g => new { Afiliado = g.Key, Cantidad = g.Count() })
+            .ToDictionaryAsync(x => x.Afiliado, x => x.Cantidad);
     }
 
     /// <remarks>

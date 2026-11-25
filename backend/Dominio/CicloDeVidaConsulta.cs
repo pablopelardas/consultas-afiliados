@@ -58,6 +58,21 @@ public static class CicloDeVidaConsulta
     public static bool EsTerminal(EstadoConsulta estado) =>
         TransicionesDesde(estado).Count == 0;
 
+    /// <summary>
+    /// Estados en los que un turno a futuro sigue ocupando la franja del
+    /// profesional.
+    /// </summary>
+    /// <remarks>
+    /// Inasistencia no entra aunque no sea terminal: no se puede marcar sobre
+    /// una consulta que todavía no ocurrió. La lista es explícita porque una
+    /// consulta de EF la tiene que traducir a SQL.
+    /// </remarks>
+    public static readonly EstadoConsulta[] OcupanAgenda =
+    {
+        EstadoConsulta.Pendiente,
+        EstadoConsulta.Confirmado
+    };
+
     public static IReadOnlyCollection<EstadoConsulta> TransicionesDesde(EstadoConsulta estado) =>
         Transiciones.TryGetValue(estado, out var permitidas)
             ? permitidas
