@@ -28,7 +28,7 @@ builder.Services.Configure<CupoNutricionOptions>(
     builder.Configuration.GetSection(CupoNutricionOptions.Seccion));
 
 // La política es pura y sin estado: Singleton alcanza.
-builder.Services.AddSingleton<ICupoNutricionPolicy, CupoNutricionPolicy>();
+builder.Services.AddSingleton<ICupoPolicy, CupoNutricionPolicy>();
 
 // Acá se elige la interpretación de "año" y "mes" del enunciado. PeriodoVigencia
 // es la lectura alternativa, implementada y testeada: cambiar de criterio es

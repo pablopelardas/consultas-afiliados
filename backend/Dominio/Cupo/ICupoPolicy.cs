@@ -6,14 +6,14 @@ namespace ConsultasPlan.Dominio.Cupo;
 /// Lo que se le pide decidir a la política.
 /// </summary>
 /// <param name="Modalidad">Modalidad de la consulta que se quiere agendar.</param>
-/// <param name="HistorialDeNutricion">
+/// <param name="Historial">
 /// Consultas del afiliado en la especialidad alcanzada, ya acotadas al período
 /// anual. Vienen sin filtrar por estado ni modalidad a propósito: cuáles
 /// consumen es la regla, y la regla vive acá.
 /// </param>
 public sealed record SolicitudDeCupo(
     ModalidadConsulta Modalidad,
-    IReadOnlyCollection<Consulta> HistorialDeNutricion,
+    IReadOnlyCollection<Consulta> Historial,
     PeriodosDelCupo Periodos);
 
 /// <summary>
@@ -37,20 +37,20 @@ public sealed record EstadoDelCupo(
 public sealed record DecisionDeCupo(bool Permitida, string? Motivo, EstadoDelCupo Estado);
 
 /// <summary>
-/// Política de cupo de consultas de nutrición.
+/// Límite de consultas que un plan impone sobre una especialidad.
 /// </summary>
 /// <remarks>
-/// Función pura: no consulta la base de datos, no lee el reloj y no produce
-/// efectos. Recibe el historial y los períodos ya resueltos, y devuelve una
-/// decisión.
-///
-/// Eso es lo que la hace verificable sin infraestructura: los casos de borde
-/// —el sexto del año, el séptimo, el segundo del mes— se escriben como datos de
-/// entrada en lugar de como estado de base de datos.
+/// Función pura: no consulta la base, no lee el reloj y no produce efectos.
+/// Recibe el historial y los períodos ya resueltos, así que los casos de borde
+/// —el sexto del año, el segundo del mes— se escriben como datos de entrada en
+/// lugar de como estado de base de datos.
 /// </remarks>
-public interface ICupoNutricionPolicy
+public interface ICupoPolicy
 {
-    /// <summary>Código de la especialidad que esta política gobierna.</summary>
+    /// <summary>
+    /// Especialidad que esta política gobierna. Es la costura de despacho: con
+    /// más de una política, se elige la que coincide con la del profesional.
+    /// </summary>
     string CodigoEspecialidad { get; }
 
     DecisionDeCupo Evaluar(SolicitudDeCupo solicitud);

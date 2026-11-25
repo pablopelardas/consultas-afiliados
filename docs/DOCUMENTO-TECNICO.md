@@ -888,18 +888,51 @@ sembrado antes de poder generar una migración nueva**.
 #### Tercero: la política, y lo que deliberadamente no sabe
 
 ```
-ICupoNutricionPolicy       regla pura: cuántas consumidas, cuántas quedan, ¿puede agendar?
-      │                    recibe el período ya resuelto; NO sabe qué es un año
-      │
+ICupoPolicy                contrato del límite: cuántas consumidas, cuántas quedan,
+   │                       ¿puede agendar? Recibe el período ya resuelto.
+   └── CupoNutricionPolicy       la regla del enunciado: 6 por año, 1 por mes
+
 IPeriodoCupoProvider       traduce una fecha en (período anual, período mensual)
-   ├── PeriodoCalendario        año = [1-ene, 1-ene)         ← adoptado
-   └── PeriodoVigencia          año = [aniversario, +1 año)  ← implementado y testeado
+   ├── PeriodoCalendario         año = [1-ene, 1-ene)         ← adoptado
+   └── PeriodoVigencia           año = [aniversario, +1 año)  ← implementado y testeado
 ```
 
 La política recibe un rango y cuenta. Cambiar de interpretación de "año" es
 cambiar una línea de `Program.cs`, sin tocar la regla ni sus tests. **La
 ambigüedad del enunciado queda materializada en el código, no solo descrita en
 este documento.**
+
+##### Por qué el contrato es genérico y la implementación no
+
+La interfaz nombra el **rol**; la clase nombra la **variante**. Es la misma
+relación que `ILogger` / `ConsoleLogger`: nadie escribe `IConsoleLogger` con una
+sola clase `ConsoleLogger` adentro, porque esa interfaz no agrega información
+sobre su implementación más que la letra `I`. De ahí `ICupoPolicy` y
+`CupoNutricionPolicy`, y no `ICupoNutricionPolicy`.
+
+El contrato es genérico, pero **la implementación es una sola, y eso es
+deliberado**. La variación previsible —otra especialidad con otros números— no
+es una variación del algoritmo: *"N por período anual, M por período mensual,
+sin acumulación"* es idéntico para nutrición y para kinesiología. Lo único que
+cambia son los límites y el código de especialidad, y eso ya es configuración
+(`CupoNutricionOptions`). Resolverlo con un subtipo por especialidad produciría
+clases con **el mismo cuerpo y distintos literales**: duplicación disfrazada de
+arquitectura.
+
+`CodigoEspecialidad` vive en el contrato precisamente por eso: es la costura de
+despacho. Con más de una política, se elige la que coincide con la especialidad
+del profesional — sin que el contrato cambie.
+
+Una segunda implementación se justifica cuando aparezca una regla de **otra
+forma**: cupo compartido entre especialidades, ilimitado con autorización
+previa, un límite que depende de la edad del afiliado. Ninguna de esas entra en
+`Evaluar(SolicitudDeCupo)`, y cuál de las tres va a aparecer no se sabe hoy —
+así que su contrato se deriva recién ahí, con dos casos reales a la vista.
+
+El contraste está en la misma carpeta y es intencional: `IPeriodoCupoProvider`
+tiene **dos implementaciones escritas y testeadas**, porque ahí la variación es
+real y presente. Una interfaz se justifica por la variación que existe, no por
+la que uno imagina.
 
 La pureza no es un gesto estético, se paga sola en los tests:
 
@@ -1307,9 +1340,9 @@ La interpretación del período (§5.1, §5.2) se resuelve detrás de una abstra
 propia:
 
 ```
-ICupoNutricionPolicy     regla pura: cuántas consumidas, cuántas quedan, ¿puede agendar?
-      │                  recibe el período ya resuelto; no sabe qué es un año
-      │
+ICupoPolicy              contrato del límite; recibe el período ya resuelto
+   └── CupoNutricionPolicy     la regla del enunciado
+
 IPeriodoCupoProvider     traduce una fecha en (período anual, período mensual)
    ├── PeriodoCalendario       año = [1-ene, 31-dic]      ← adoptado
    └── PeriodoVigencia         año = [aniversario, +1 año] ← implementado y testeado

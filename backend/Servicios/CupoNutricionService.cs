@@ -8,13 +8,13 @@ namespace ConsultasPlan.Servicios;
 public class CupoNutricionService : ICupoNutricionService
 {
     private readonly AppDbContext _contexto;
-    private readonly ICupoNutricionPolicy _politica;
+    private readonly ICupoPolicy _politica;
     private readonly IPeriodoCupoProvider _periodos;
     private readonly TimeProvider _reloj;
 
     public CupoNutricionService(
         AppDbContext contexto,
-        ICupoNutricionPolicy politica,
+        ICupoPolicy politica,
         IPeriodoCupoProvider periodos,
         TimeProvider reloj)
     {
