@@ -10,8 +10,12 @@
       <button @click="$router.push('/consultas/nuevo')">Nueva consulta</button>
     </div>
 
-    <Modal v-if="mostrandoNueva" titulo="Nueva consulta" @cerrar="cerrarNueva">
-      <FormularioConsulta @cerrar="cerrarNueva" @creada="consultaCreada" />
+    <Modal v-if="mostrandoNueva" titulo="Nueva consulta" @cerrar="volverALaLista">
+      <FormularioConsulta @cerrar="volverALaLista" @creada="consultaCreada" />
+    </Modal>
+
+    <Modal v-if="idDetalle" :titulo="`Consulta #${idDetalle}`" @cerrar="volverALaLista">
+      <DetalleConsulta :id="idDetalle" @actualizada="reemplazarFila" />
     </Modal>
 
     <div v-if="cargando" class="cargando">
@@ -49,7 +53,7 @@
             <td class="secundario">{{ consulta.motivo }}</td>
             <td class="col-acciones">
               <div class="acciones">
-                <router-link :to="`/consultas/${consulta.id}`" class="boton btn-secundario btn-chico">Ver</router-link>
+                <button class="btn-secundario btn-chico" @click="abrirDetalle(consulta.id)">Ver</button>
                 <BotonConConfirmacion
                   v-if="puedeCancelar(consulta)"
                   etiqueta="Cancelar"
@@ -76,12 +80,13 @@ import { consultasApi } from '../services/api'
 import { instante } from '../services/fechas'
 import AvisoDeError from '../components/AvisoDeError.vue'
 import BotonConConfirmacion from '../components/BotonConConfirmacion.vue'
+import DetalleConsulta from '../components/DetalleConsulta.vue'
 import FormularioConsulta from '../components/FormularioConsulta.vue'
 import Modal from '../components/Modal.vue'
 
 export default {
   name: 'ConsultasList',
-  components: { AvisoDeError, BotonConConfirmacion, FormularioConsulta, Modal },
+  components: { AvisoDeError, BotonConConfirmacion, DetalleConsulta, FormularioConsulta, Modal },
   data () {
     return {
       consultas: [],
@@ -99,6 +104,10 @@ export default {
     // el modal sin que haya dos estados que mantener sincronizados.
     mostrandoNueva () {
       return this.$route.path === '/consultas/nuevo'
+    },
+
+    idDetalle () {
+      return this.$route.params.id ?? null
     }
   },
   mounted () {
@@ -115,15 +124,26 @@ export default {
       return consulta.transicionesPermitidas?.includes('Cancelado')
     },
 
-    cerrarNueva () {
+    volverALaLista () {
       this.$router.push('/consultas')
+    },
+
+    abrirDetalle (id) {
+      this.$router.push(`/consultas/${id}`)
     },
 
     // La ruta reusa este mismo componente, así que no se remonta: la lista hay
     // que recargarla a mano para que aparezca la consulta recién creada.
     consultaCreada () {
-      this.cerrarNueva()
+      this.volverALaLista()
       this.cargar()
+    },
+
+    // Una transición hecha desde el detalle cambia una fila y nada más: pedir
+    // la lista entera para eso sería tráfico que no cambia el resultado.
+    reemplazarFila (consulta) {
+      const i = this.consultas.findIndex(c => c.id === consulta.id)
+      if (i !== -1) this.consultas.splice(i, 1, consulta)
     },
 
     async cargar () {

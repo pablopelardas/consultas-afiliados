@@ -1,18 +1,17 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import ConsultasList from '../views/ConsultasList.vue'
-import ConsultaDetalle from '../views/ConsultaDetalle.vue'
 import AfiliadosList from '../views/AfiliadosList.vue'
 
-// `/consultas/nuevo` monta la misma lista: el alta es un modal por encima, no
-// otra pantalla. Sigue siendo una ruta para que el ítem del menú, el enlace
-// directo y el botón "atrás" funcionen como con cualquier otra.
-// Va antes de `/consultas/:id`, que si no se lo come como un id.
+// Consultas es una sola pantalla. El alta y el detalle son diálogos sobre la
+// lista, pero siguen siendo rutas: así el enlace directo, el botón "atrás" y
+// compartir una URL funcionan igual que con una pantalla aparte.
+// `/consultas/nuevo` va antes de `/consultas/:id`, que si no se lo come como id.
 const routes = [
-  { path: '/',                redirect: '/consultas'     },
-  { path: '/consultas',       component: ConsultasList   },
-  { path: '/consultas/nuevo', component: ConsultasList   },
-  { path: '/consultas/:id',   component: ConsultaDetalle },
-  { path: '/afiliados',       component: AfiliadosList   }
+  { path: '/',                redirect: '/consultas'   },
+  { path: '/consultas',       component: ConsultasList },
+  { path: '/consultas/nuevo', component: ConsultasList },
+  { path: '/consultas/:id',   component: ConsultasList },
+  { path: '/afiliados',       component: AfiliadosList }
 ]
 
 const router = createRouter({
