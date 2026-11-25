@@ -1,5 +1,5 @@
 <template>
-  <div class="hoja">
+  <div>
     <AvisoDeError :error="error" />
 
     <form novalidate @submit.prevent="guardar">
@@ -64,7 +64,9 @@
       </div>
 
       <div class="pie">
-        <router-link to="/consultas" class="boton btn-secundario">Cancelar</router-link>
+        <button type="button" class="btn-secundario" :disabled="enviando" @click="$emit('cerrar')">
+          Cancelar
+        </button>
         <button type="submit" :disabled="!puedeEnviar">
           <span v-if="enviando" class="hilandero" />
           {{ enviando ? 'Confirmando…' : 'Confirmar consulta' }}
@@ -76,12 +78,13 @@
 
 <script>
 import { consultasApi, afiliadosApi, profesionalesApi } from '../services/api'
-import AvisoDeError from '../components/AvisoDeError.vue'
-import CupoNutricion from '../components/CupoNutricion.vue'
+import AvisoDeError from './AvisoDeError.vue'
+import CupoNutricion from './CupoNutricion.vue'
 
 export default {
-  name: 'ConsultaNueva',
+  name: 'FormularioConsulta',
   components: { AvisoDeError, CupoNutricion },
+  emits: ['cerrar', 'creada'],
   data () {
     return {
       form: {
@@ -182,14 +185,13 @@ export default {
       this.enviando = true
       this.error = null
       try {
-        await consultasApi.create({
+        this.$emit('creada', await consultasApi.create({
           afiliadoId: Number(this.form.afiliadoId),
           profesionalId: Number(this.form.profesionalId),
           modalidad: this.form.modalidad,
           fechaHora: this.aIsoUtc(this.form.fechaHora),
           motivo: this.form.motivo
-        })
-        this.$router.push('/consultas')
+        }))
       } catch (error) {
         this.error = error
         // El cupo pudo haber cambiado entre que se cargó y se confirmó: si el
@@ -204,8 +206,6 @@ export default {
 </script>
 
 <style scoped>
-.hoja { max-width: 560px; }
-
 .fila {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -221,7 +221,6 @@ export default {
   border-top: 1px solid var(--borde-sutil);
 }
 
-a.boton { text-decoration: none; }
 .hilandero { border-top-color: currentColor; }
 
 @media (max-width: 600px) {
