@@ -1,3 +1,4 @@
+using ConsultasPlan.Dominio;
 using ConsultasPlan.Dominio.Cupo;
 using ConsultasPlan.Models;
 
@@ -50,10 +51,25 @@ public record ProfesionalResponse(
     int Id,
     string NombreCompleto,
     string Especialidad,
+    bool TieneCupo,
     SedeResponse? Sede)
 {
-    public static ProfesionalResponse De(Profesional p) => new(
-        p.Id, p.NombreCompleto, p.Especialidad?.Nombre ?? string.Empty, SedeResponse.De(p.Sede));
+    /// <param name="codigoConCupo">
+    /// Especialidad alcanzada por una política de cupo, según
+    /// <see cref="ConsultasPlan.Dominio.Cupo.ICupoPolicy.CodigoEspecialidad"/>.
+    /// </param>
+    /// <remarks>
+    /// <c>TieneCupo</c> se resuelve acá y no en el cliente. La alternativa era
+    /// que el frontend comparara <c>especialidad === 'Nutrición'</c>, que es la
+    /// misma fragilidad que el catálogo vino a eliminar del backend: cambiar el
+    /// nombre desde un ABM apagaría la interfaz de cupo en silencio.
+    /// </remarks>
+    public static ProfesionalResponse De(Profesional p, string codigoConCupo) => new(
+        p.Id,
+        p.NombreCompleto,
+        p.Especialidad?.Nombre ?? string.Empty,
+        p.Especialidad?.Codigo == codigoConCupo,
+        SedeResponse.De(p.Sede));
 }
 
 public record ProfesionalEnConsulta(int Id, string NombreCompleto, string Especialidad)
@@ -90,6 +106,15 @@ public record CupoNutricionResponse(CupoPeriodoResponse Ano, CupoPeriodoResponse
         CupoPeriodoResponse.De(e.LimiteMensual, e.UsadasEnElMes, e.DisponiblesEnElMes, e.Mensual));
 }
 
+/// <summary>
+/// Una consulta, con los estados a los que puede pasar desde el actual.
+/// </summary>
+/// <remarks>
+/// <c>TransicionesPermitidas</c> existe para que el cliente no tenga que
+/// reimplementar la tabla de <see cref="CicloDeVidaConsulta"/>: una copia en el
+/// frontend se desincroniza sin que nada falle, y ofrecer acciones imposibles
+/// deja al usuario descubriendo la regla recién cuando lo frena un 409.
+/// </remarks>
 public record ConsultaResponse(
     int Id,
     AfiliadoEnConsulta? Afiliado,
@@ -98,11 +123,13 @@ public record ConsultaResponse(
     EstadoConsulta Estado,
     ModalidadConsulta Modalidad,
     string Motivo,
-    DateTime FechaCreacion)
+    DateTime FechaCreacion,
+    IReadOnlyCollection<EstadoConsulta> TransicionesPermitidas)
 {
     public static ConsultaResponse De(Consulta c) => new(
         c.Id,
         AfiliadoEnConsulta.De(c.Afiliado),
         ProfesionalEnConsulta.De(c.Profesional),
-        c.FechaHora, c.Estado, c.Modalidad, c.Motivo, c.FechaCreacion);
+        c.FechaHora, c.Estado, c.Modalidad, c.Motivo, c.FechaCreacion,
+        CicloDeVidaConsulta.TransicionesDesde(c.Estado));
 }

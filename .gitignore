@@ -18,3 +18,7 @@ Thumbs.db
 tests/**/bin/
 tests/**/obj/
 [Tt]est[Rr]esults/
+
+# Variables de entorno locales
+frontend/.env.local
+frontend/.env.*.local
