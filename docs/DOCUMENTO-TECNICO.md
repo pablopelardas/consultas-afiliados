@@ -4,8 +4,9 @@
 **Stack:** .NET 8 (ASP.NET Core · EF Core · SQLite) + Vue 3 (Vite)
 **Repositorio:** https://github.com/pablopelardas/consultas-afiliados
 
-> Documento vivo. Se escribe en paralelo al código: cada decisión se anota en el
-> momento en que se toma, no se reconstruye al cierre.
+> Escrito en paralelo al código: cada decisión quedó anotada en el momento en
+> que se tomó, no reconstruida al cierre. Por eso incluye los supuestos tal como
+> se resolvieron y los errores que aparecieron en el camino.
 
 ---
 
@@ -25,6 +26,40 @@ trabajo se organizó en dos ejes:
    como una **regla pura** — sin acceso a base de datos ni efectos secundarios —
    detrás de una interfaz, de modo que toda la lógica de negocio sea verificable
    sin levantar infraestructura.
+
+### Resultado
+
+```
+dotnet test   →  164 passed, 0 failed
+npm test      →    8 passed, 0 failed
+```
+
+**28 problemas** relevados en el código base: 24 corregidos, 3 con alcance
+acotado y declarado, 1 fuera de alcance con su razón (§4).
+
+Lo que conviene mirar primero, porque es donde está el criterio y no solo la
+corrección:
+
+| Dónde | Qué decidió |
+|---|---|
+| §3.5 | El ciclo de vida de la consulta como tabla de transiciones, no como `if` por endpoint |
+| §3.8 | Una capa de servicios que cerró un agujero real: `PUT /estado` salteaba la ventana de cancelación |
+| §3.9 | La política de cupo como función pura, con la ambigüedad del enunciado materializada en dos implementaciones |
+| §3.10 | Que el cliente pregunte las reglas en vez de copiarlas |
+| §5 | Los once supuestos, cada uno con la alternativa que se descartó |
+
+Tres hallazgos que no venían del enunciado y cambiaron el código:
+
+- Un **test de propiedad** encontró que `PeriodoVigencia` dejaba tres días al
+  año sin período para ciertos afiliados, y un hueco cada cuatro años para
+  quien se da de alta un 29 de febrero (§3.9).
+- Migrar el catálogo **en un solo paso perdía datos** en el caso que ninguna
+  migración resuelve sola: un profesional con una especialidad que el catálogo
+  no contempla. De ahí las dos etapas con una consulta de control en el medio
+  (§3.9).
+- **Abrir el navegador** encontró dos defectos que el build y los 164 tests no
+  veían: una fecha de calendario que se corría un día y una vista que quedaba
+  mostrando el registro anterior (§3.10).
 
 ---
 
@@ -1631,7 +1666,26 @@ solicitado y por afectar el contrato que consume el frontend.
 | 4 | Capa de servicios con interfaces | Completo |
 | 5 | Política de cupo de nutrición | Completo |
 | 6 | Frontend: errores visibles, validación y cupo en pantalla | Completo |
-| 7 | Cierre del documento | En curso |
+| 7 | Cierre del documento | Completo |
+
+### Verificación final
+
+```
+dotnet test   →  164 passed, 0 failed
+npm test      →    8 passed, 0 failed
+```
+
+| Alcance de los tests | Suites |
+|---|---|
+| Reglas de dominio sin infraestructura | ciclo de vida, política de cupo, períodos, invariante de consumo |
+| Servicios sobre EF InMemory | agendamiento, cupo, historial, baja lógica |
+| Migraciones sobre SQLite real | las dos etapas del catálogo, incluido el ida y vuelta |
+| Pipeline HTTP completo | verbos, códigos, `ProblemDetails`, validación, contratos |
+| Frontend | traducción de errores y formateo de fechas |
+
+La Parte 2 se verificó además de punta a punta en el navegador: el panel de cupo
+antes de enviar, el `409` con su motivo en pantalla, y las acciones disponibles
+según las transiciones que declara el backend.
 
 ---
 
