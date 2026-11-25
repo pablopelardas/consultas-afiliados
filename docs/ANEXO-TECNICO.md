@@ -52,7 +52,8 @@ Las secciones donde está el criterio y no solo la corrección:
 | §3.10 | Que el cliente pregunte las reglas en vez de copiarlas |
 | §5 | Los once supuestos, cada uno con la alternativa que se descartó |
 
-Tres hallazgos que no venían del enunciado y cambiaron el código:
+Tres defectos que aparecieron ejecutando y no leyendo código, y que
+cambiaron el diseño:
 
 - Un **test de propiedad** encontró que `PeriodoVigencia` dejaba tres días al
   año sin período para ciertos afiliados, y un hueco cada cuatro años para
