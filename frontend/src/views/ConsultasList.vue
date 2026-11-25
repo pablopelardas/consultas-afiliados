@@ -7,8 +7,12 @@
       <p class="conteo">
         <template v-if="!cargando">{{ consultas.length }} {{ consultas.length === 1 ? 'consulta' : 'consultas' }}</template>
       </p>
-      <router-link to="/consultas/nuevo" class="boton">Nueva consulta</router-link>
+      <button @click="$router.push('/consultas/nuevo')">Nueva consulta</button>
     </div>
+
+    <Modal v-if="mostrandoNueva" titulo="Nueva consulta" @cerrar="cerrarNueva">
+      <FormularioConsulta @cerrar="cerrarNueva" @creada="consultaCreada" />
+    </Modal>
 
     <div v-if="cargando" class="cargando">
       <span class="hilandero" />
@@ -72,10 +76,12 @@ import { consultasApi } from '../services/api'
 import { instante } from '../services/fechas'
 import AvisoDeError from '../components/AvisoDeError.vue'
 import BotonConConfirmacion from '../components/BotonConConfirmacion.vue'
+import FormularioConsulta from '../components/FormularioConsulta.vue'
+import Modal from '../components/Modal.vue'
 
 export default {
   name: 'ConsultasList',
-  components: { AvisoDeError, BotonConConfirmacion },
+  components: { AvisoDeError, BotonConConfirmacion, FormularioConsulta, Modal },
   data () {
     return {
       consultas: [],
@@ -85,6 +91,14 @@ export default {
       errorDeCarga: null,
       errorDeAccion: null,
       cancelando: null
+    }
+  },
+  computed: {
+    // La ruta es la fuente de verdad y no una bandera local: así el ítem del
+    // menú, el enlace directo y el botón "atrás" del navegador abren y cierran
+    // el modal sin que haya dos estados que mantener sincronizados.
+    mostrandoNueva () {
+      return this.$route.path === '/consultas/nuevo'
     }
   },
   mounted () {
@@ -99,6 +113,17 @@ export default {
     // copia acá se desincroniza del dominio sin que ningún test lo note.
     puedeCancelar (consulta) {
       return consulta.transicionesPermitidas?.includes('Cancelado')
+    },
+
+    cerrarNueva () {
+      this.$router.push('/consultas')
+    },
+
+    // La ruta reusa este mismo componente, así que no se remonta: la lista hay
+    // que recargarla a mano para que aparezca la consulta recién creada.
+    consultaCreada () {
+      this.cerrarNueva()
+      this.cargar()
     },
 
     async cargar () {

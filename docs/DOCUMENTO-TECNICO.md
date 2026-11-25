@@ -1331,6 +1331,46 @@ contradecir al ítem del menú que está encendido.
 **El ítem activo usa `exact-active`.** `/consultas` es prefijo de
 `/consultas/nuevo`: con la clase laxa quedaban dos ítems encendidos a la vez.
 
+#### El alta es un modal, y la ruta sigue siendo la fuente de verdad
+
+Agendar una consulta dejó de ser una pantalla aparte: es un diálogo sobre la
+lista. Para una operación corta, que además se decide mirando la tabla, cambiar
+de pantalla hace perder el contexto y obliga a volver para confirmar que quedó.
+
+Lo que no se hizo fue convertirlo en una bandera local del componente. El modal
+se abre porque **la ruta** es `/consultas/nuevo`:
+
+```js
+{ path: '/consultas',       component: ConsultasList },
+{ path: '/consultas/nuevo', component: ConsultasList },   // misma lista, modal encima
+{ path: '/consultas/:id',   component: ConsultaDetalle },
+```
+
+```js
+mostrandoNueva () {
+  return this.$route.path === '/consultas/nuevo'
+}
+```
+
+Con una bandera local habría dos estados que mantener sincronizados —el de la
+ruta y el del componente— y el ítem del menú, el enlace directo y el botón
+«atrás» del navegador dejarían de funcionar. Con la ruta como única fuente, los
+tres siguen andando sin código extra.
+
+El orden de las rutas importa: `/consultas/nuevo` va **antes** de
+`/consultas/:id`, que si no se lo come como un id.
+
+El formulario pasó de `views/ConsultaNueva.vue` a
+`components/FormularioConsulta.vue` y emite `cerrar` y `creada`: no conoce el
+router ni sabe que está dentro de un modal, así que sirve igual embebido en otra
+pantalla. `Modal.vue` aporta solo lo que un diálogo tiene que hacer sí o sí y es
+fácil olvidarse: cerrar con Escape, cerrar al hacer clic afuera, bloquear el
+scroll del fondo y llevarse el foco al abrirse.
+
+Como la ruta reusa el mismo componente, la lista no se remonta: al crear una
+consulta se recarga explícitamente, que es lo que hace que la fila nueva
+aparezca sin que el usuario tenga que refrescar.
+
 #### Qué no cambió
 
 Ninguna llamada a la API, ningún manejo de error, ninguna regla. Los ocho tests

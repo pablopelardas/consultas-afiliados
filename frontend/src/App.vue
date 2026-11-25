@@ -61,9 +61,12 @@ export default {
     // El encabezado sale de la ruta y no de cada vista: así ninguna puede
     // olvidarse de ponerlo ni contradecir al ítem del menú que está activo.
     titulo () {
-      const exacto = this.items.find(i => i.ruta === this.$route.path)
-      if (exacto) return exacto.etiqueta
-      return this.$route.path.startsWith('/consultas/') ? 'Detalle de consulta' : 'Plan Consultas'
+      const ruta = this.$route.path
+      if (ruta === '/afiliados') return 'Afiliados'
+      // El alta es un modal sobre la lista: el título de atrás sigue siendo el
+      // de la lista, y el del modal lo pone el modal.
+      if (ruta === '/consultas' || ruta === '/consultas/nuevo') return 'Consultas'
+      return ruta.startsWith('/consultas/') ? 'Detalle de consulta' : 'Plan Consultas'
     }
   }
 }
