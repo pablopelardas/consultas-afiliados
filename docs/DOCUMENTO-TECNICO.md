@@ -768,6 +768,273 @@ prefirió no agregar una capa de tipos que no separa nada.
 
 ---
 
+### 3.9 Política de cupo de nutrición — `feat/cupo-nutricion`
+
+**Parte 2 del challenge.** El enunciado:
+
+> *El plan incluye 6 consultas de nutrición por año, no más de 1 por mes. Las
+> consultas no usadas no se acumulan. Aplica a consultas presenciales.*
+
+Tres frases, cinco decisiones que el enunciado no toma. Están todas en §5; acá
+está cómo quedaron en el código.
+
+#### Primero: el catálogo de especialidades
+
+La política necesita saber qué consultas son "de nutrición". En el código base
+eso era texto libre:
+
+```csharp
+public string Especialidad { get; set; } = string.Empty;   // "Nutrición"
+```
+
+Una política que compara contra el literal `"Nutrición"` se **desactiva en
+silencio** con un error de tipeo al dar de alta un profesional:
+`"Nutricionista"`, `"Nutrición Clínica"`, `"nutricion"`. El afiliado agenda sin
+límite y nadie se entera, porque nada falla.
+
+| Campo | Rol |
+|---|---|
+| `Codigo` (`"NUT"`) | **Identidad.** Índice único, inmutable por contrato. Es contra esto que compara la política |
+| `Nombre` (`"Nutrición"`) | **Presentación.** Es lo que muestra la interfaz |
+
+Ni el `Id` ni el nombre sirven como identidad: el `Id` depende del orden en que
+se poblaron las filas y difiere entre ambientes, y el nombre es editable desde
+un ABM. El razonamiento completo está en §5.8.
+
+El catálogo va en la migración con `HasData`, no en el sembrado de datos de
+demostración: **una regla de negocio depende de que la fila `NUT` exista**. Los
+afiliados y consultas de ejemplo son otra cosa y siguen en `DbSeeder`.
+
+El contrato público no cambió. `ProfesionalResponse.Especialidad` sigue siendo el
+nombre, así que el frontend no se enteró:
+
+```csharp
+p.Especialidad?.Nombre ?? string.Empty
+```
+
+#### Segundo: migraciones, y por qué son dos
+
+Cambiar el esquema obliga a introducir migraciones de EF Core, lo que resuelve
+el problema #15 del inventario: `EnsureCreated()` en un sistema descrito como
+productivo crea el esquema desde el modelo y **no deja registro de versión**, así
+que un cambio posterior no tiene forma de aplicarse sobre una base existente sin
+perder los datos.
+
+El scaffolding automático generó la conversión en un solo paso, y mal:
+
+```csharp
+migrationBuilder.DropColumn("Especialidad", "Profesionales");   // ← primero
+migrationBuilder.CreateTable("Especialidades", ...);            // ← después
+```
+
+Descarta el texto **antes** de crear el catálogo: cuando llega el momento de
+convertir, la información a convertir ya no existe. EF lo advierte
+—*"An operation was scaffolded that may result in the loss of data"*— y la
+advertencia es correcta.
+
+Reordenarlo no alcanza. Al probar la versión de un solo paso sobre datos reales
+apareció el caso que ninguna migración puede resolver sola: **un profesional con
+una especialidad que el catálogo no contempla**. La migración abortaba con
+`FOREIGN KEY constraint failed`, que es el comportamiento correcto —mejor fallar
+que asignar una especialidad inventada— pero con un mensaje que no le dice a
+nadie qué pasó.
+
+De ahí las dos etapas, que es el despliegue que corresponde:
+
+| Etapa | Qué hace | Propiedad |
+|---|---|---|
+| `CatalogoDeEspecialidades` | Crea el catálogo, agrega `EspecialidadId` **nullable**, convierte por nombre y **conserva la columna de texto** | Siempre segura de aplicar. Nada se pierde, nada falla |
+| `EspecialidadObligatoria` | Vuelve la columna obligatoria, agrega la FK y descarta el texto | Falla si quedó alguien sin clasificar |
+
+Entre las dos va la consulta de control:
+
+```sql
+SELECT Id, NombreCompleto, Especialidad
+  FROM Profesionales
+ WHERE EspecialidadId IS NULL;
+```
+
+Si devuelve filas, alguien que conozca el negocio tiene que decidir a qué
+especialidad corresponde cada una. **La base no puede: un `UPDATE` no sabe qué
+hacer con "Homeopatía".** Y si se aplica la etapa 2 de todas formas, falla —
+pero con la etapa 1 ya aplicada, es decir, con los datos en un estado donde se
+los puede revisar.
+
+Con una sola migración no hay ningún momento en el que mirar los datos a medio
+convertir. Eso es lo que compran las dos etapas.
+
+**Dos limitaciones de SQLite que aparecieron al escribir la vuelta atrás,** y
+que no son anecdóticas porque determinan cómo hay que escribir la migración:
+
+1. **SQLite no sabe eliminar una restricción ni una columna**; EF lo emula
+   reconstruyendo la tabla. Una sentencia de datos intercalada entre operaciones
+   de esquema corre contra la tabla vieja y su resultado se descarta al copiar.
+   EF lo avisa: *"will be attempted while a rebuild of table is pending"*. Por
+   eso el `UPDATE` que repone el texto es la **primera** operación del `Down`, y
+   el `Down` de la etapa 2 no tiene ninguna sentencia de datos.
+2. **`PRAGMA foreign_keys` es un no-op dentro de una transacción.** Sin él, el
+   `DROP TABLE Profesionales` de la reconstrucción falla cuando hay consultas que
+   lo referencian. De ahí que el `Down` de la etapa 1 esté escrito en SQL
+   explícito con `suppressTransaction: true`: es lo que hace que el pragma sirva.
+
+El ida y vuelta completo está verificado sobre una base con profesionales,
+afiliados y consultas: el texto se repone, las consultas sobreviven y el catálogo
+desaparece.
+
+Se agregó además una `IDesignTimeDbContextFactory`. Sin ella `dotnet ef` arranca
+la aplicación para obtener el contexto, lo que **ejecuta la migración y el
+sembrado antes de poder generar una migración nueva**.
+
+#### Tercero: la política, y lo que deliberadamente no sabe
+
+```
+ICupoNutricionPolicy       regla pura: cuántas consumidas, cuántas quedan, ¿puede agendar?
+      │                    recibe el período ya resuelto; NO sabe qué es un año
+      │
+IPeriodoCupoProvider       traduce una fecha en (período anual, período mensual)
+   ├── PeriodoCalendario        año = [1-ene, 1-ene)         ← adoptado
+   └── PeriodoVigencia          año = [aniversario, +1 año)  ← implementado y testeado
+```
+
+La política recibe un rango y cuenta. Cambiar de interpretación de "año" es
+cambiar una línea de `Program.cs`, sin tocar la regla ni sus tests. **La
+ambigüedad del enunciado queda materializada en el código, no solo descrita en
+este documento.**
+
+La pureza no es un gesto estético, se paga sola en los tests:
+
+```csharp
+// El séptimo del año es un dato de entrada, no un estado de base a sembrar.
+var decision = Evaluar([C(Utc(2026,1,10)), ..., C(Utc(2026,7,10))]);
+Assert.False(decision.Permitida);
+```
+
+Los límites son configuración (`CupoNutricionOptions`), no literales dentro de la
+regla. Además de que un plan comercial cambia sus números, permite probar el
+borde del año sin sembrar seis consultas: `porAno: 2`.
+
+El predicado de consumo es un `switch` **sin rama permisiva**:
+
+```csharp
+EstadoConsulta.Pendiente    => true,   // el cupo se reserva al agendar
+EstadoConsulta.Confirmado   => true,
+EstadoConsulta.Atendido     => true,
+EstadoConsulta.Inasistencia => true,   // §5.4: la franja se ocupó igual
+EstadoConsulta.Cancelado    => false,  // liberó cupo y liberó la franja
+_ => throw new ArgumentOutOfRangeException(...)
+```
+
+Si mañana se agrega un estado, esto lanza en el primer test. Un `default => false`
+sería un agujero en la política que nadie ve hasta que alguien lo usa.
+
+#### Los períodos son intervalos semiabiertos
+
+`[Desde, Hasta)`. Con intervalos cerrados hay que elegir el último instante
+representable del período, y ese instante depende de la precisión con la que la
+base guarda la fecha. Con el extremo abierto, el límite es el primer instante del
+período siguiente: los períodos consecutivos no se solapan ni dejan huecos,
+cualquiera sea la precisión. El borde está fijado en un test — una consulta a
+medianoche del 1 de enero se cuenta en un año y solo uno.
+
+#### Un bug que encontró un test de propiedad
+
+`PeriodoVigencia` calculaba el fin del período como `inicio.AddMonths(1)`. Con un
+alta el día 31:
+
+| Período | Arranca | Termina con `AddMonths(1)` |
+|---|---|---|
+| Febrero | 28/02 (recortado) | **28/03** |
+| Marzo | 31/03 | 30/04 |
+
+Del 28 al 31 de marzo **no hay período que contenga esos días**. Ninguno de los
+tests de ejemplo lo veía, porque todos miraban fechas cómodas. Lo encontró un
+test que recorre tres años día por día y afirma una propiedad en lugar de un
+caso:
+
+```csharp
+Assert.True(actual.Contiene(dia), $"{dia:dd/MM/yyyy} no cae en su período.");
+if (actual == anterior) continue;
+Assert.Equal(anterior.Hasta, actual.Desde);   // sin huecos ni solapamientos
+```
+
+La corrección: el fin de un período es **el ancla siguiente**, no un mes después
+del inicio. El mismo error estaba en el período anual, donde con un alta el 29 de
+febrero dejaba un hueco cada cuatro años.
+
+Se registra porque es la clase de defecto que un test de ejemplo no encuentra: no
+falla en el caso típico, falla tres días al año para un subconjunto de los
+afiliados.
+
+#### Dónde se aplica, y por qué solo ahí
+
+En `ConsultaService.Crear`, antes de verificar la superposición horaria: a un
+afiliado sin cupo hay que decirle que no tiene cupo, no que el horario está
+ocupado.
+
+Se aplica **únicamente al agendar**, y eso es correcto por una invariante que
+también está testeada:
+
+> Ninguna transición legal convierte una consulta que no consumía cupo en una que
+> sí consume.
+
+El único estado que no consume es `Cancelado`, y es terminal (§5.7). La única
+transición que cambia el consumo es *hacia* `Cancelado`, que **libera** cupo —
+relaja la restricción en lugar de apretarla, así que no necesita verificación.
+
+El test lo verifica contra las dos reglas a la vez: la tabla de transiciones y el
+predicado de consumo. Si alguien agrega una transición o cambia qué consume, el
+test avisa — que es exactamente cuando hay que decidir si el cupo necesita
+revalidarse.
+
+#### La respuesta, y hacer visible la política
+
+Exceder el cupo devuelve **409 Conflict** con `ProblemDetails` (§5.11). El
+detalle no dice "no se puede":
+
+> *El plan incluye 6 consultas de nutrición por año y el afiliado ya tiene 6
+> entre el 01/01/2026 y el 31/12/2026. Las consultas no utilizadas no se
+> acumulan, así que el cupo se renueva el 01/01/2027.*
+
+> *El plan permite 1 consulta de nutrición por mes y el afiliado ya tiene 1 entre
+> el 01/06/2026 y el 30/06/2026. La próxima se puede agendar a partir del
+> 01/07/2026, y quedan 5 consultas en el año.*
+
+Dice el límite, el período, cuánto queda y **desde cuándo se puede**. El límite
+anual se verifica primero a propósito: con el año agotado, el mensaje mensual
+sería una promesa falsa.
+
+Las fechas se formatean con cultura invariante. El mensaje es parte del contrato
+de la API y no debe cambiar según la cultura del servidor que lo genera.
+
+Y se agregó un endpoint para que la política no se manifieste **solo** como un
+rechazo:
+
+```
+GET /afiliados/{id}/cupo-nutricion
+→ { "ano": { "limite": 6, "usadas": 4, "disponibles": 2, "desde": ..., "hasta": ... },
+    "mes": { "limite": 1, "usadas": 0, "disponibles": 1, ... } }
+```
+
+Una regla que el usuario solo descubre cuando lo frena es la misma experiencia
+que daba el código base. El frontend lo consume en §3.10.
+
+#### Tests
+
+```
+dotnet test   →  158 passed, 0 failed    (eran 84)
+```
+
+| Suite | Qué cubre | Infraestructura |
+|---|---|---|
+| `CupoNutricionPolicyTests` | La regla: bordes del año y del mes, qué consume, virtual, configuración de límites, precedencia y texto de los mensajes | Ninguna |
+| `PeriodosDelCupoTests` | Las dos interpretaciones, meses cortos, años bisiestos, y las propiedades sin huecos ni solapamientos | Ninguna |
+| `InvarianteDeConsumoTests` | Que el cupo solo haga falta verificarlo al agendar | Ninguna |
+| `CupoEnElAgendamientoTests` | El armado: qué historial se busca, especialidad por código, orden de las validaciones | EF InMemory |
+| `NormalizacionDeEspecialidadesTests` | Las dos etapas de migración sobre datos del código base, incluido el caso sin clasificar y el ida y vuelta | SQLite real |
+| `CupoPorHttpTests` | Toda la pila sobre los datos sembrados: 409, `ProblemDetails`, el endpoint de cupo | API completa |
+
+---
+
 ## 4. Problemas detectados en el código base
 
 Inventario completo de lo relevado. La columna **Estado** indica si está
@@ -787,11 +1054,11 @@ corregido, planificado o fuera de alcance.
 | 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Corregido |
 | 9 | Sin validación de entrada: no hay `[Required]`, ni unicidad de DNI, ni formato de email, ni verificación de que `FechaHora` sea futura | Controllers | Corregido |
 | 10 | Detección de superposición incompleta: compara igualdad exacta de `FechaHora`, sin duración de consulta ni índice único que evite la condición de carrera | `ConsultasController.cs:54` | Parcial (ver §6) |
-| 11 | `Afiliado.ConsultasUsadas` es un contador que nadie actualiza. Dato desnormalizado y engañoso | `Models/Afiliado.cs` | Ver §5.9 |
-| 12 | `Afiliado.FechaBloqueo` nunca se escribe | `Models/Afiliado.cs` | Planificado |
+| 11 | `Afiliado.ConsultasUsadas` es un contador que nadie actualiza. Dato desnormalizado y engañoso | `Models/Afiliado.cs` | No se usa como fuente de verdad — ver §5.9 |
+| 12 | `Afiliado.FechaBloqueo` nunca se escribe | `Models/Afiliado.cs` | Fuera de alcance — no hay operación de bloqueo en el enunciado (§6) |
 | 13 | Baja física de afiliados existiendo `isActive`, y con FK `OnDelete(SetNull)`: las consultas quedan sin afiliado y se pierde el historial | `AfiliadosController.cs:59` | Corregido |
-| 14 | `Especialidad` es texto libre. La política de cupo dependería de comparar contra el literal `"Nutrición"` | `Models/Profesional.cs` | Planificado (ver §5.8) |
-| 15 | `EnsureCreated()` sin migraciones, en un sistema descrito como productivo: el esquema no puede evolucionar de forma controlada | `Program.cs` | Planificado |
+| 14 | `Especialidad` es texto libre. La política de cupo dependería de comparar contra el literal `"Nutrición"` | `Models/Profesional.cs` | Corregido — catálogo con `Codigo` como identidad (§3.9, §5.8) |
+| 15 | `EnsureCreated()` sin migraciones, en un sistema descrito como productivo: el esquema no puede evolucionar de forma controlada | `Program.cs` | Corregido — `Migrate()` y migraciones versionadas (§3.9) |
 | 16 | Nomenclatura: `createdAt` e `isActive` en camelCase | `Models/Afiliado.cs` | Corregido — propiedades renombradas; las columnas conservan su nombre para no requerir migración |
 | 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Corregido — ningún controlador referencia `AppDbContext`; reglas en `Servicios/`, resultado tipado `ServiceResult<T>` |
 | 18 | Sin manejo global de errores, sin `ProblemDetails`, sin logging | `Program.cs` | Corregido — logging estructurado queda fuera de alcance (§6) |
@@ -1009,8 +1276,15 @@ esas tres cosas es un texto libre con otro nombre.
 
 Este cambio modifica el esquema, lo que obliga a introducir migraciones de EF
 Core — y de paso resuelve el problema #15, `EnsureCreated()` en un sistema
-productivo. Se documenta el script de normalización de los datos existentes
-(`"Nutrición"`, `"Clínica Médica"`) hacia el catálogo.
+productivo.
+
+La conversión de los datos existentes (`"Nutrición"`, `"Clínica Médica"`) hacia
+el catálogo quedó implementada en **dos migraciones**, no en una: la primera
+convierte y conserva el texto original, la segunda exige que la conversión haya
+sido completa. El motivo es que un profesional con una especialidad que el
+catálogo no contempla no lo puede resolver ningún `UPDATE` — hace falta que
+alguien decida, y para eso hace falta un momento en el que mirar los datos a
+medio convertir. El detalle y la consulta de control están en §3.9.
 
 ### 5.9 El contador `ConsultasUsadas` no se usa como fuente de verdad
 
@@ -1074,6 +1348,23 @@ deja el camino abierto: agregar la relación no exige rediseñar lo hecho.
 Se señala explícitamente porque la diferencia entre no haber visto el problema y
 haberlo visto y acotado el alcance es parte de lo que se evalúa.
 
+### Operación de bloqueo de afiliados
+
+El modelo trae `Afiliado.Bloqueado` y `Afiliado.FechaBloqueo` (problema #12). El
+primero **sí se respeta**: un afiliado bloqueado no puede agendar. El segundo no
+lo escribe nadie, y no se corrigió porque **no hay ninguna operación que bloquee
+o desbloquee**: el campo solo lo puebla el sembrado.
+
+Agregar `POST /afiliados/{id}/bloqueo` y su reverso es simple, pero el enunciado
+no menciona el bloqueo y la pregunta que hay que contestar antes es de negocio:
+quién puede bloquear, por qué motivos y si el motivo se registra. Inventar esa
+respuesta para completar un campo sería agregar una operación que nadie pidió,
+con reglas supuestas.
+
+Lo que sí se hizo es no empeorarlo: `ActualizarAfiliadoRequest` **excluye**
+`Bloqueado` a propósito (§3.7), de modo que el estado de bloqueo no se pueda
+cambiar de contrabando desde la edición de la ficha de contacto.
+
 ### Autenticación y autorización
 
 El sistema no tiene identidad de usuario. Varias operaciones deberían estar
@@ -1117,7 +1408,7 @@ solicitado y por afectar el contrato que consume el frontend.
 | 2 | Normalización, convenciones, proyecto de tests | Completo |
 | 3 | Correcciones del backend | Completo — fechas, semántica, ciclo de vida, historial y contratos |
 | 4 | Capa de servicios con interfaces | Completo |
-| 5 | Política de cupo de nutrición | Pendiente |
+| 5 | Política de cupo de nutrición | Completo |
 | 6 | Frontend: errores visibles y validación | Pendiente |
 | 7 | Cierre del documento | En curso |
 
@@ -1140,14 +1431,32 @@ dotnet run
 ```
 
 API en `http://localhost:5000`, Swagger en `http://localhost:5000/swagger`.
-La base SQLite (`consultas.db`) y los datos iniciales se crean en el primer
-arranque.
+
+La base SQLite (`consultas.db`) se crea en el primer arranque aplicando las
+**migraciones**, y después se siembran los datos de demostración.
+
+> Si existe un `backend/consultas.db` de una corrida anterior a las migraciones
+> —creado con `EnsureCreated()`, es decir sin tabla de versiones— hay que
+> borrarlo: `Migrate()` no puede aplicarse sobre un esquema del que no hay
+> registro. Es exactamente el problema que las migraciones vienen a resolver.
 
 ### Tests
 
 ```bash
 dotnet test
 ```
+
+### Migraciones
+
+```bash
+cd backend
+dotnet ef migrations list
+dotnet ef database update                      # al día
+dotnet ef database update CatalogoDeEspecialidades   # solo la etapa 1
+```
+
+Entre las dos etapas de la conversión del catálogo va la consulta de control de
+§3.9.
 
 ### Frontend
 

@@ -11,7 +11,7 @@ public class CatalogoService : ICatalogoService
     public CatalogoService(AppDbContext contexto) => _contexto = contexto;
 
     public async Task<IReadOnlyList<Profesional>> ListarProfesionales() =>
-        await _contexto.Profesionales.Include(p => p.Sede).ToListAsync();
+        await _contexto.Profesionales.Include(p => p.Sede).Include(p => p.Especialidad).ToListAsync();
 
     public async Task<IReadOnlyList<Sede>> ListarSedes() =>
         await _contexto.Sedes.ToListAsync();

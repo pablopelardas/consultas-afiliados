@@ -47,9 +47,32 @@ public static class ContextoDePrueba
         return afiliado;
     }
 
+    /// <summary>
+    /// Especialidad del catálogo, creada solo si falta.
+    /// </summary>
+    /// <remarks>
+    /// El proveedor InMemory no aplica el <c>HasData</c> del catálogo si nadie
+    /// crea la base, así que los tests lo construyen a demanda.
+    /// </remarks>
+    public static Especialidad AgregarEspecialidad(this AppDbContext db, string codigo)
+    {
+        var existente = db.Especialidades.FirstOrDefault(e => e.Codigo == codigo);
+        if (existente is not null) return existente;
+
+        var especialidad = new Especialidad { Codigo = codigo, Nombre = $"Especialidad {codigo}" };
+        db.Especialidades.Add(especialidad);
+        db.SaveChanges();
+        return especialidad;
+    }
+
+    /// <remarks>
+    /// El valor por defecto NO es nutrición a propósito: un test entra en la
+    /// política de cupo solo si la pide explícitamente, así que agregar la
+    /// política no cambia el significado de los tests que ya existían.
+    /// </remarks>
     public static Profesional AgregarProfesional(
         this AppDbContext db,
-        string especialidad = "Nutrición")
+        string codigoEspecialidad = "CLI")
     {
         var sede = new Sede { Nombre = "Sede de Prueba", Direccion = "Calle 1" };
         db.Sedes.Add(sede);
@@ -58,7 +81,7 @@ public static class ContextoDePrueba
         var profesional = new Profesional
         {
             NombreCompleto = "Profesional de Prueba",
-            Especialidad = especialidad,
+            EspecialidadId = db.AgregarEspecialidad(codigoEspecialidad).Id,
             SedeId = sede.Id
         };
 

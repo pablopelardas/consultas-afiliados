@@ -18,11 +18,13 @@ public class ConsultaService : IConsultaService
 
     private readonly AppDbContext _contexto;
     private readonly TimeProvider _reloj;
+    private readonly ICupoNutricionService _cupo;
 
-    public ConsultaService(AppDbContext contexto, TimeProvider reloj)
+    public ConsultaService(AppDbContext contexto, TimeProvider reloj, ICupoNutricionService cupo)
     {
         _contexto = contexto;
         _reloj = reloj;
+        _cupo = cupo;
     }
 
     private DateTime Ahora => _reloj.GetUtcNow().UtcDateTime;
@@ -55,10 +57,19 @@ public class ConsultaService : IConsultaService
         if (afiliado.Bloqueado)
             return Falla.Conflicto("El afiliado se encuentra bloqueado para agendar consultas.");
 
-        var profesionalExiste = await _contexto.Profesionales
-            .AnyAsync(p => p.Id == request.ProfesionalId);
-        if (!profesionalExiste)
+        // Se carga la entidad y no un AnyAsync porque la política de cupo
+        // necesita el código de la especialidad del profesional.
+        var profesional = await _contexto.Profesionales
+            .Include(p => p.Especialidad)
+            .FirstOrDefaultAsync(p => p.Id == request.ProfesionalId);
+        if (profesional is null)
             return Falla.NoEncontrado("El profesional indicado no existe.");
+
+        // Parte 2. Va antes de ocupar la franja: rechazar por cupo no debe
+        // depender de que el horario esté libre.
+        var fallaDeCupo = await _cupo.VerificarAntesDeAgendar(
+            afiliado, profesional, request.FechaHora, request.Modalidad);
+        if (fallaDeCupo is not null) return fallaDeCupo;
 
         var horarioOcupado = await _contexto.Consultas.AnyAsync(c =>
             c.ProfesionalId == request.ProfesionalId &&
@@ -139,5 +150,6 @@ public class ConsultaService : IConsultaService
 
     private IQueryable<Consulta> ConsultasConRelaciones() => _contexto.Consultas
         .Include(c => c.Afiliado)
-        .Include(c => c.Profesional);
+        .Include(c => c.Profesional)!
+            .ThenInclude(p => p!.Especialidad);
 }

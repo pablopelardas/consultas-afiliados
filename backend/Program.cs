@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ConsultasPlan.Data;
+using ConsultasPlan.Dominio.Cupo;
 using ConsultasPlan.Servicios;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +21,19 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IConsultaService, ConsultaService>();
 builder.Services.AddScoped<IAfiliadoService, AfiliadoService>();
 builder.Services.AddScoped<ICatalogoService, CatalogoService>();
+builder.Services.AddScoped<ICupoNutricionService, CupoNutricionService>();
+
+// Parte 2 — política de cupo de nutrición.
+builder.Services.Configure<CupoNutricionOptions>(
+    builder.Configuration.GetSection(CupoNutricionOptions.Seccion));
+
+// La política es pura y sin estado: Singleton alcanza.
+builder.Services.AddSingleton<ICupoNutricionPolicy, CupoNutricionPolicy>();
+
+// Acá se elige la interpretación de "año" y "mes" del enunciado. PeriodoVigencia
+// es la lectura alternativa, implementada y testeada: cambiar de criterio es
+// cambiar esta línea, sin tocar la política ni sus tests.
+builder.Services.AddSingleton<IPeriodoCupoProvider, PeriodoCalendario>();
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
@@ -54,7 +68,13 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var reloj = scope.ServiceProvider.GetRequiredService<TimeProvider>();
-    db.Database.EnsureCreated();
+
+    // Migrate() y no EnsureCreated(): el segundo crea el esquema a partir del
+    // modelo actual y no deja registro de versión, así que un cambio posterior
+    // no tiene forma de aplicarse sobre una base existente. En un sistema
+    // descrito como productivo, eso significa que el esquema no puede
+    // evolucionar sin perder los datos.
+    db.Database.Migrate();
     DbSeeder.Seed(db, reloj);
 }
 
