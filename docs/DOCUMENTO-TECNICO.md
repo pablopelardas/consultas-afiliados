@@ -86,6 +86,7 @@ fix/contratos-api               DTOs de entrada/salida y validación
 refactor/capa-servicios         interfaces de servicio y resultado tipado
 feat/cupo-nutricion             política de cupo (Parte 2)
 fix/ux-manejo-errores           frontend: errores visibles y validación en cliente
+feat/rediseno-interfaz          frontend: sistema de tokens y rediseño
 ```
 
 Convención de commits: [Conventional Commits](https://www.conventionalcommits.org/).
@@ -1270,6 +1271,80 @@ instalaciones del mismo `package.json` pueden resolver versiones distintas.
 
 ---
 
+### 3.11 Rediseño de la interfaz — `feat/rediseno-interfaz`
+
+La sección anterior hizo que la interfaz **dijera** lo correcto. Esta hace que
+se vea como algo que alguien usa ocho horas por día.
+
+#### La decisión que hubo que tomar primero
+
+El punto de partida fue adoptar **`@clever/ui`**, la librería de componentes de
+la organización. Al revisarla aparecieron tres hechos que cambian la respuesta:
+
+| Hecho | Consecuencia |
+|---|---|
+| Es un paquete **privado** en un registry interno | `npm install` falla sin un Personal Access Token |
+| Se distribuye como **fuentes crudas**, sin `dist/` | El proyecto consumidor compila su código fuente |
+| Está construida sobre **Quasar 2** + `vue-i18n` | Adoptarla no es cambiar CSS, es incorporar un framework de componentes |
+
+Este repositorio es **público**. Tomar la dependencia significaba que
+`package.json`, `.npmrc` y `package-lock.json` quedaran apuntando a
+infraestructura interna, y sobre todo que **cualquiera que clonara el
+repositorio no pudiera construirlo**. Un proyecto que no compila para quien lo
+evalúa es un problema peor que una interfaz fea. La única forma de que
+compilara públicamente era incorporar los componentes al repositorio, es decir
+publicar código interno, que no es una opción.
+
+**Resolución:** se replican las convenciones visuales con CSS propio y **cero
+dependencias nuevas**. Se pierde fidelidad exacta con la librería; se gana un
+repositorio que cualquiera clona, instala y ejecuta.
+
+#### La capa de tokens
+
+```
+assets/tokens.css   roles, no colores: --superficie, --peligro-tenue, --nav-activo
+assets/base.css     estilos de elemento: botones, tablas, campos, badges
+App.vue             el armazón: barra lateral, encabezado y tarjeta de contenido
+```
+
+Ningún componente nombra un color. Nombra un **rol**: `--texto-peligro`,
+`--fila-hover`, `--radio-control`. Cambiar la paleta es tocar un archivo; con
+literales repartidos por las vistas es una búsqueda y reemplazo que siempre deja
+algo atrás — que es exactamente lo que pasaba antes, con `#1a73e8` escrito ocho
+veces en cuatro archivos.
+
+La escala es la misma que usa el sistema de la organización: espaciado de 4,
+radios de control y tarjeta, tipografía Inter con Poppins para títulos, y una
+barra lateral clara con el ítem activo en pastilla.
+
+#### Tres decisiones de diseño que no son estéticas
+
+**El rojo aparece al confirmar, no antes.** Una columna de ocho botones
+«Dar de baja» en rojo le da el mayor peso visual de la tabla a la acción que
+menos conviene apurar. El disparador es un botón secundario con texto de
+peligro; el rojo pleno aparece recién en el «Sí» de la confirmación.
+
+**El título sale de la ruta, no de la vista.** Cada vista ponía su propio
+`<h2>`. Con el título derivado de la ruta, ninguna puede olvidarse de ponerlo ni
+contradecir al ítem del menú que está encendido.
+
+**El ítem activo usa `exact-active`.** `/consultas` es prefijo de
+`/consultas/nuevo`: con la clase laxa quedaban dos ítems encendidos a la vez.
+
+#### Qué no cambió
+
+Ninguna llamada a la API, ningún manejo de error, ninguna regla. Los ocho tests
+de frontend y los 164 de backend pasan sin modificarse, porque el rediseño tocó
+marcado y estilos y no la capa que tiene lógica. Esa separación —servicios
+testeados, componentes presentacionales— es lo que hace que un cambio de este
+tamaño sea verificable en un solo paso.
+
+Se corrigió además el formato de la fecha del turno: mostraba segundos y hora en
+formato de 12 horas (`05/12/2026, 06:00 a. m.`), que en una tabla de veinte
+filas es ruido.
+
+---
+
 ## 4. Problemas detectados en el código base
 
 Inventario completo de lo relevado. La columna **Estado** indica si está
@@ -1600,6 +1675,15 @@ Lo que sí se hizo es no empeorarlo: `ActualizarAfiliadoRequest` **excluye**
 `Bloqueado` a propósito (§3.7), de modo que el estado de bloqueo no se pueda
 cambiar de contrabando desde la edición de la ficha de contacto.
 
+### Adopción de la librería de componentes de la organización
+
+`@clever/ui` es privada, se distribuye como fuentes crudas y está construida
+sobre Quasar. Adoptarla dejaría este repositorio público sin poder construirse
+para quien no tenga acceso al registry interno (§3.11). Si la entrega pasara a
+un repositorio interno, la migración es directa: la capa de tokens ya está
+separada de los componentes y las vistas no tienen estilos propios más allá de
+su layout.
+
 ### Reactivación de afiliados desde la interfaz
 
 El backend expone `POST /afiliados/{id}/reactivacion`, pero la lista solo
@@ -1666,6 +1750,7 @@ solicitado y por afectar el contrato que consume el frontend.
 | 4 | Capa de servicios con interfaces | Completo |
 | 5 | Política de cupo de nutrición | Completo |
 | 6 | Frontend: errores visibles, validación y cupo en pantalla | Completo |
+| 6b | Frontend: sistema de tokens y rediseño | Completo |
 | 7 | Cierre del documento | Completo |
 
 ### Verificación final

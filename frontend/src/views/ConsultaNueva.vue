@@ -1,13 +1,11 @@
 <template>
-  <div class="card" style="max-width: 560px">
-    <h2>Nueva consulta</h2>
-
+  <div class="hoja">
     <AvisoDeError :error="error" />
 
     <form novalidate @submit.prevent="guardar">
-      <div class="form-group">
-        <label>Afiliado</label>
-        <select v-model="form.afiliadoId" :disabled="enviando">
+      <div class="campo">
+        <label for="afiliado">Afiliado</label>
+        <select id="afiliado" v-model="form.afiliadoId" :disabled="enviando">
           <option value="">Seleccioná un afiliado</option>
           <option v-for="a in afiliados" :key="a.id" :value="a.id">
             {{ a.nombreCompleto }} — DNI {{ a.dni }}
@@ -16,9 +14,9 @@
         <p v-if="errorDe('afiliadoId')" class="error-campo">{{ errorDe('afiliadoId') }}</p>
       </div>
 
-      <div class="form-group">
-        <label>Profesional</label>
-        <select v-model="form.profesionalId" :disabled="enviando">
+      <div class="campo">
+        <label for="profesional">Profesional</label>
+        <select id="profesional" v-model="form.profesionalId" :disabled="enviando">
           <option value="">Seleccioná un profesional</option>
           <option v-for="p in profesionales" :key="p.id" :value="p.id">
             {{ p.nombreCompleto }} — {{ p.especialidad }}
@@ -35,24 +33,27 @@
         :cargando="cargandoCupo"
       />
 
-      <div class="form-group">
-        <label>Modalidad</label>
-        <select v-model="form.modalidad" :disabled="enviando">
-          <option value="Presencial">Presencial</option>
-          <option value="Virtual">Virtual</option>
-        </select>
+      <div class="fila">
+        <div class="campo">
+          <label for="modalidad">Modalidad</label>
+          <select id="modalidad" v-model="form.modalidad" :disabled="enviando">
+            <option value="Presencial">Presencial</option>
+            <option value="Virtual">Virtual</option>
+          </select>
+        </div>
+
+        <div class="campo">
+          <label for="fecha">Fecha y hora</label>
+          <input id="fecha" type="datetime-local" v-model="form.fechaHora" :min="ahoraLocal" :disabled="enviando" />
+          <p v-if="fechaEnElPasado" class="error-campo">La consulta tiene que ser a futuro.</p>
+          <p v-else-if="errorDe('fechaHora')" class="error-campo">{{ errorDe('fechaHora') }}</p>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label>Fecha y hora</label>
-        <input type="datetime-local" v-model="form.fechaHora" :min="ahoraLocal" :disabled="enviando" />
-        <p v-if="fechaEnElPasado" class="error-campo">La consulta tiene que ser a futuro.</p>
-        <p v-else-if="errorDe('fechaHora')" class="error-campo">{{ errorDe('fechaHora') }}</p>
-      </div>
-
-      <div class="form-group">
-        <label>Motivo</label>
+      <div class="campo">
+        <label for="motivo">Motivo</label>
         <input
+          id="motivo"
           type="text"
           v-model="form.motivo"
           maxlength="500"
@@ -62,9 +63,13 @@
         <p v-if="errorDe('motivo')" class="error-campo">{{ errorDe('motivo') }}</p>
       </div>
 
-      <button type="submit" :disabled="!puedeEnviar">
-        {{ enviando ? 'Confirmando…' : 'Confirmar consulta' }}
-      </button>
+      <div class="pie">
+        <router-link to="/consultas" class="boton btn-secundario">Cancelar</router-link>
+        <button type="submit" :disabled="!puedeEnviar">
+          <span v-if="enviando" class="hilandero" />
+          {{ enviando ? 'Confirmando…' : 'Confirmar consulta' }}
+        </button>
+      </div>
     </form>
   </div>
 </template>
@@ -199,13 +204,27 @@ export default {
 </script>
 
 <style scoped>
-.error-campo {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: #c62828;
+.hoja { max-width: 560px; }
+
+.fila {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--e-md);
 }
-button:disabled {
-  background: #c5cdd6;
-  cursor: not-allowed;
+
+.pie {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--e-xs);
+  margin-top: var(--e-lg);
+  padding-top: var(--e-md);
+  border-top: 1px solid var(--borde-sutil);
+}
+
+a.boton { text-decoration: none; }
+.hilandero { border-top-color: currentColor; }
+
+@media (max-width: 600px) {
+  .fila { grid-template-columns: 1fr; }
 }
 </style>

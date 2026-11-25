@@ -10,8 +10,15 @@
  * antes de lo que cierra.
  */
 
+const FORMATO_INSTANTE = {
+  day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hour12: false
+}
+
+// Sin segundos: el turno se agenda al minuto y mostrar ':00' es ruido en una
+// tabla de veinte filas.
 export function instante (iso) {
-  return new Date(iso).toLocaleString('es-AR')
+  return new Date(iso).toLocaleString('es-AR', FORMATO_INSTANTE)
 }
 
 export function fechaDeCalendario (iso) {

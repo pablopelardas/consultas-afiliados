@@ -1,73 +1,82 @@
 <template>
-  <div>
-    <router-link to="/consultas" style="font-size:14px; color:#1a73e8">← Volver a consultas</router-link>
+  <div class="hoja">
+    <router-link to="/consultas" class="volver">← Volver a consultas</router-link>
 
-    <div style="margin-top: 20px; max-width: 560px">
-      <AvisoDeError :error="error" @reintentar="cargar" />
+    <AvisoDeError :error="error" @reintentar="cargar" />
 
-      <p v-if="cargando">Cargando consulta…</p>
-
-      <div v-else-if="consulta" class="card">
-        <h2>Consulta #{{ consulta.id }}</h2>
-        <div class="detail-row"><span class="label">Afiliado</span><span>{{ consulta.afiliado?.nombreCompleto }}</span></div>
-        <div class="detail-row"><span class="label">DNI</span><span>{{ consulta.afiliado?.dni }}</span></div>
-        <div class="detail-row"><span class="label">Profesional</span><span>{{ consulta.profesional?.nombreCompleto }}</span></div>
-        <div class="detail-row"><span class="label">Especialidad</span><span>{{ consulta.profesional?.especialidad }}</span></div>
-        <div class="detail-row"><span class="label">Fecha y hora</span><span>{{ formatFecha(consulta.fechaHora) }}</span></div>
-        <div class="detail-row"><span class="label">Modalidad</span><span>{{ consulta.modalidad }}</span></div>
-        <div class="detail-row"><span class="label">Estado</span><span>{{ consulta.estado }}</span></div>
-        <div class="detail-row"><span class="label">Motivo</span><span>{{ consulta.motivo }}</span></div>
-
-        <!-- Las acciones son las que el backend declara posibles. El dropdown
-             ofrecía los cinco estados, incluidos los que la tabla de
-             transiciones rechaza con un 409. -->
-        <p v-if="!transiciones.length" class="sin-acciones">
-          Una consulta en estado {{ consulta.estado }} no admite cambios de estado.
-        </p>
-
-        <template v-else>
-          <div style="margin-top: 24px">
-            <div class="form-group">
-              <label>Cambiar estado</label>
-              <select v-model="nuevoEstado" :disabled="ocupado">
-                <option v-for="e in transiciones" :key="e" :value="e">{{ e }}</option>
-              </select>
-            </div>
-            <button :disabled="ocupado" style="margin-bottom: 16px" @click="ejecutar('estado')">
-              {{ enCurso === 'estado' ? 'Actualizando…' : 'Actualizar estado' }}
-            </button>
-          </div>
-
-          <div class="acciones">
-            <button
-              v-if="permite('Atendido')"
-              :disabled="ocupado"
-              @click="ejecutar('atencion')"
-            >
-              {{ enCurso === 'atencion' ? 'Registrando…' : 'Registrar atención' }}
-            </button>
-
-            <BotonConConfirmacion
-              v-if="permite('Cancelado')"
-              etiqueta="Cancelar consulta"
-              pregunta="¿Cancelar la consulta?"
-              peligro
-              :cargando="enCurso === 'cancelacion'"
-              :disabled="ocupado"
-              @confirmado="ejecutar('cancelacion')"
-            />
-
-            <button
-              v-if="permite('Inasistencia')"
-              :disabled="ocupado"
-              @click="ejecutar('inasistencia')"
-            >
-              {{ enCurso === 'inasistencia' ? 'Marcando…' : 'Marcar inasistencia' }}
-            </button>
-          </div>
-        </template>
-      </div>
+    <div v-if="cargando" class="cargando">
+      <span class="hilandero" />
+      Cargando consulta…
     </div>
+
+    <template v-else-if="consulta">
+      <div class="cabecera">
+        <h2>Consulta #{{ consulta.id }}</h2>
+        <span :class="['badge', `badge-${consulta.estado?.toLowerCase()}`]">{{ consulta.estado }}</span>
+      </div>
+
+      <dl class="datos">
+        <div><dt>Afiliado</dt><dd>{{ consulta.afiliado?.nombreCompleto }}</dd></div>
+        <div><dt>DNI</dt><dd>{{ consulta.afiliado?.dni }}</dd></div>
+        <div><dt>Profesional</dt><dd>{{ consulta.profesional?.nombreCompleto }}</dd></div>
+        <div><dt>Especialidad</dt><dd>{{ consulta.profesional?.especialidad }}</dd></div>
+        <div><dt>Fecha y hora</dt><dd>{{ formatFecha(consulta.fechaHora) }}</dd></div>
+        <div><dt>Modalidad</dt><dd>{{ consulta.modalidad }}</dd></div>
+        <div class="ancho"><dt>Motivo</dt><dd>{{ consulta.motivo }}</dd></div>
+      </dl>
+
+      <!-- Las acciones son las que el backend declara posibles. El selector
+           ofrecía los cinco estados, incluidos los que la tabla de
+           transiciones rechaza con un 409. -->
+      <p v-if="!transiciones.length" class="sin-acciones">
+        Una consulta en estado {{ consulta.estado }} no admite cambios de estado.
+      </p>
+
+      <div v-else class="acciones">
+        <div class="cambio">
+          <label for="estado">Cambiar estado</label>
+          <div class="cambio-control">
+            <select id="estado" v-model="nuevoEstado" :disabled="ocupado">
+              <option v-for="e in transiciones" :key="e" :value="e">{{ e }}</option>
+            </select>
+            <button :disabled="ocupado" @click="ejecutar('estado')">
+              <span v-if="enCurso === 'estado'" class="hilandero" />
+              {{ enCurso === 'estado' ? 'Actualizando…' : 'Actualizar' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="atajos">
+          <button
+            v-if="permite('Atendido')"
+            class="btn-secundario"
+            :disabled="ocupado"
+            @click="ejecutar('atencion')"
+          >
+            {{ enCurso === 'atencion' ? 'Registrando…' : 'Registrar atención' }}
+          </button>
+
+          <button
+            v-if="permite('Inasistencia')"
+            class="btn-secundario"
+            :disabled="ocupado"
+            @click="ejecutar('inasistencia')"
+          >
+            {{ enCurso === 'inasistencia' ? 'Marcando…' : 'Marcar inasistencia' }}
+          </button>
+
+          <BotonConConfirmacion
+            v-if="permite('Cancelado')"
+            etiqueta="Cancelar consulta"
+            pregunta="¿Cancelar la consulta?"
+            peligro
+            :cargando="enCurso === 'cancelacion'"
+            :disabled="ocupado"
+            @confirmado="ejecutar('cancelacion')"
+          />
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -166,32 +175,75 @@ export default {
 </script>
 
 <style scoped>
-.detail-row {
-  display: flex;
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 14px;
+.hoja { max-width: 620px; }
+
+.volver {
+  display: inline-block;
+  margin-bottom: var(--e-md);
+  color: var(--texto-sutil);
+  font-size: var(--t-sm);
+  text-decoration: none;
 }
-.label {
-  width: 130px;
-  font-weight: 600;
-  color: #666;
-  flex-shrink: 0;
-}
-.acciones {
+.volver:hover { color: var(--marca); }
+
+.cabecera {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
   align-items: center;
+  gap: var(--e-sm);
+  margin-bottom: var(--e-md);
 }
+
+.cabecera h2 { font-size: var(--t-xl); }
+
+.datos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--e-sm) var(--e-lg);
+  margin: 0;
+  padding: var(--e-md) 0;
+  border-top: 1px solid var(--borde-sutil);
+  border-bottom: 1px solid var(--borde-sutil);
+}
+
+.datos .ancho { grid-column: 1 / -1; }
+.datos dt { color: var(--texto-apagado); font-size: var(--t-xs); font-weight: 600; }
+.datos dd { margin: 2px 0 0; font-size: var(--t-sm); color: var(--texto-fuerte); }
+
 .sin-acciones {
-  margin: 24px 0 0;
-  font-size: 13px;
-  color: #777;
+  margin: var(--e-md) 0 0;
+  color: var(--texto-apagado);
+  font-size: var(--t-sm);
   font-style: italic;
 }
-button:disabled {
-  background: #c5cdd6;
-  cursor: not-allowed;
+
+.acciones { margin-top: var(--e-lg); }
+
+.cambio label {
+  display: block;
+  margin-bottom: var(--e-2xs);
+  color: var(--texto-sutil);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.cambio-control { display: flex; gap: var(--e-xs); }
+.cambio-control select { width: 220px; }
+.cambio-control button { height: 40px; }
+
+.atajos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e-xs);
+  margin-top: var(--e-md);
+  padding-top: var(--e-md);
+  border-top: 1px solid var(--borde-sutil);
+}
+
+.hilandero { border-top-color: currentColor; }
+
+@media (max-width: 600px) {
+  .datos { grid-template-columns: 1fr; }
+  .cambio-control select { width: 100%; }
 }
 </style>

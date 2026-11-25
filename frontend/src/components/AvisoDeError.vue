@@ -1,9 +1,15 @@
 <template>
   <div v-if="error" :class="['aviso', error.esDeNegocio ? 'aviso-regla' : 'aviso-falla']" role="alert">
-    <span class="icono">{{ error.esDeNegocio ? '!' : '×' }}</span>
+    <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path v-if="error.esDeNegocio" d="M12 8v5m0 3h.01" />
+      <path v-else d="M15 9l-6 6m0-6l6 6" />
+    </svg>
+
     <div class="cuerpo">
       <p class="mensaje">{{ error.message }}</p>
-      <button v-if="reintentable" class="reintentar" @click="$emit('reintentar')">
+      <button v-if="reintentable" class="btn-chico btn-secundario" @click="$emit('reintentar')">
         Reintentar
       </button>
     </div>
@@ -39,37 +45,42 @@ export default {
 <style scoped>
 .aviso {
   display: flex;
-  gap: 12px;
+  gap: var(--e-sm);
   align-items: flex-start;
-  padding: 12px 16px;
-  border-radius: 6px;
-  margin-bottom: 18px;
-  font-size: 14px;
-  border-left: 4px solid;
+  margin-bottom: var(--e-md);
+  padding: var(--e-sm) var(--e-md);
+  border: 1px solid;
+  border-radius: var(--radio-control);
+  font-size: var(--t-sm);
 }
+
 .aviso-regla {
-  background: #fff8e1;
-  border-color: #f9a825;
-  color: #7a5900;
+  background: var(--alerta-tenue);
+  border-color: #fad08a;
+  color: var(--texto-alerta);
 }
+
 .aviso-falla {
-  background: #fdecea;
-  border-color: #d32f2f;
-  color: #8c1d16;
+  background: var(--peligro-tenue);
+  border-color: #f7a5a5;
+  color: var(--texto-peligro);
 }
+
 .icono {
-  font-weight: 700;
-  line-height: 1.5;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
+  margin-top: 1px;
 }
-.cuerpo { flex: 1 }
-.mensaje { margin: 0; line-height: 1.5 }
-.reintentar {
-  margin-top: 10px;
+
+.cuerpo { flex: 1; min-width: 0; }
+.mensaje { margin: 0; line-height: 1.5; }
+
+button {
+  margin-top: var(--e-sm);
   background: transparent;
-  border: 1px solid currentColor;
+  border-color: currentColor;
   color: inherit;
-  font-weight: 600;
 }
-.reintentar:hover { background: rgba(0, 0, 0, .06) }
+button:hover { background: rgba(255, 255, 255, .55); }
 </style>
