@@ -23,10 +23,9 @@ El punto de partida es que **el código base no compila**. A partir de ahí se
 relevaron **28 problemas**: 24 corregidos, 3 con alcance acotado y declarado, 1
 fuera de alcance con su razón (§3).
 
-La Parte 2 está implementada y verificada: la política de cupo es una **regla
-pura** —sin base de datos, sin reloj, sin efectos— detrás de una interfaz, con
-la ambigüedad del enunciado materializada en dos implementaciones de período
-(§4).
+La Parte 2 está implementada y verificada, con la ambigüedad del enunciado
+—qué significa "año", qué significa "mes"— materializada en dos
+implementaciones de período y no solo descrita en este documento (§4).
 
 ### Las tres decisiones que estructuran la solución
 
@@ -35,19 +34,6 @@ la ambigüedad del enunciado materializada en dos implementaciones de período
 | **El ciclo de vida es una tabla** (§3, anexo §3.5) | Las transiciones válidas son un dato del dominio declarado una vez, no un `if` repetido en cada endpoint |
 | **La política de cupo es una función pura** (§4) | No consulta la base, no lee el reloj, no produce efectos: los casos borde se escriben como entrada y no como estado de base |
 | **El cliente pregunta las reglas en vez de copiarlas** (§4, anexo §3.10) | El frontend no reimplementa la tabla de transiciones ni compara `especialidad === 'Nutrición'`: el backend le declara qué acciones existen y qué profesionales tienen cupo |
-
-### Tres hallazgos que no venían del enunciado
-
-- Un **test de propiedad** encontró que `PeriodoVigencia` dejaba tres días al
-  año sin período para ciertos afiliados, y un hueco cada cuatro años para quien
-  se da de alta un 29 de febrero.
-- Migrar el catálogo de especialidades **en un solo paso perdía datos** en el
-  caso que ninguna migración resuelve sola: un profesional con una especialidad
-  que el catálogo no contempla. De ahí dos etapas con una consulta de control en
-  el medio.
-- **Abrir el navegador** encontró dos defectos que el build y los 164 tests no
-  veían: una fecha de calendario que se corría un día en UTC-3 y una vista que
-  quedaba mostrando el registro anterior.
 
 ---
 
@@ -86,6 +72,20 @@ sobre qué más se rompió.
 | Migraciones sobre SQLite real | Las dos etapas del catálogo, incluido el ida y vuelta |
 | Pipeline HTTP completo | Verbos, códigos, `ProblemDetails`, validación, contratos |
 | Frontend | Traducción de errores y formateo de fechas |
+
+Tres defectos aparecieron **ejecutando y no leyendo código**, lo que es el
+argumento a favor de haber invertido en esa red antes que en avanzar:
+
+- Un **test de propiedad** encontró que `PeriodoVigencia` dejaba tres días al
+  año sin período para ciertos afiliados, y un hueco cada cuatro años para quien
+  se da de alta un 29 de febrero.
+- **Probar la migración del catálogo sobre datos reales** mostró que en un solo
+  paso perdía información. El caso que ninguna migración resuelve sola es un
+  profesional con una especialidad que el catálogo no contempla: de ahí las dos
+  etapas con una consulta de control en el medio.
+- **Abrir el navegador** encontró dos defectos con el build y los 164 tests en
+  verde: una fecha de calendario que se corría un día en UTC-3 y una vista que
+  quedaba mostrando el registro anterior al cambiar solo el parámetro de ruta.
 
 ---
 
