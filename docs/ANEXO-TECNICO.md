@@ -42,8 +42,7 @@ npm test      →    8 passed, 0 failed
 **28 problemas** relevados en el código base: 24 corregidos, 3 con alcance
 acotado y declarado, 1 fuera de alcance con su razón (§4).
 
-Lo que conviene mirar primero, porque es donde está el criterio y no solo la
-corrección:
+Las secciones donde está el criterio y no solo la corrección:
 
 | Dónde | Qué decidió |
 |---|---|
