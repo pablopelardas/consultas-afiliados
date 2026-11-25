@@ -30,5 +30,18 @@ public interface IAfiliadoService
     /// </summary>
     Task<ServiceResult> DarDeBaja(int id);
 
+    /// <summary>
+    /// Turnos a futuro que siguen agendados, por afiliado.
+    /// </summary>
+    /// <remarks>
+    /// La baja no los cancela, y no debería: se revierte con
+    /// <see cref="Reactivar"/> mientras una cancelación es terminal, así que
+    /// cancelar en cascada convertiría un error administrativo en pérdida
+    /// irrecuperable. Lo que falta es que quien da de baja sepa cuántos deja en
+    /// pie —el afiliado desaparece de las vistas y el turno no—.
+    /// </remarks>
+    Task<IReadOnlyDictionary<int, int>> ConsultasFuturasAgendadas(
+        IReadOnlyCollection<int> afiliadoIds);
+
     Task<ServiceResult<Afiliado>> Reactivar(int id);
 }

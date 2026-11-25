@@ -18,11 +18,19 @@ public class AfiliadosController : ApiControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll() =>
-        Ok((await _afiliados.ListarVigentes()).Select(AfiliadoResponse.De));
+    public async Task<IActionResult> GetAll()
+    {
+        var afiliados = await _afiliados.ListarVigentes();
+        var futuras = await _afiliados.ConsultasFuturasAgendadas(
+            afiliados.Select(a => a.Id).ToList());
+
+        return Ok(afiliados.Select(a =>
+            AfiliadoResponse.De(a, futuras.GetValueOrDefault(a.Id))));
+    }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id) => Responder(await _afiliados.Obtener(id));
+    public async Task<IActionResult> GetById(int id) =>
+        await Responder(await _afiliados.Obtener(id));
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CrearAfiliadoRequest request)
@@ -32,12 +40,12 @@ public class AfiliadosController : ApiControllerBase
 
         return CreatedAtAction(nameof(GetById),
             new { id = resultado.Valor.Id },
-            AfiliadoResponse.De(resultado.Valor));
+            AfiliadoResponse.De(resultado.Valor, consultasFuturasAgendadas: 0));
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] ActualizarAfiliadoRequest request) =>
-        Responder(await _afiliados.Actualizar(id, request));
+        await Responder(await _afiliados.Actualizar(id, request));
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
@@ -66,10 +74,14 @@ public class AfiliadosController : ApiControllerBase
 
     [HttpPost("{id}/reactivacion")]
     public async Task<IActionResult> Reactivar(int id) =>
-        Responder(await _afiliados.Reactivar(id));
+        await Responder(await _afiliados.Reactivar(id));
 
-    private IActionResult Responder(ServiceResult<Models.Afiliado> resultado) =>
-        resultado.EsExito
-            ? Ok(AfiliadoResponse.De(resultado.Valor))
-            : Problema(resultado.Falla!);
+    private async Task<IActionResult> Responder(ServiceResult<Models.Afiliado> resultado)
+    {
+        if (!resultado.EsExito) return Problema(resultado.Falla!);
+
+        var futuras = await _afiliados.ConsultasFuturasAgendadas(new[] { resultado.Valor.Id });
+        return Ok(AfiliadoResponse.De(
+            resultado.Valor, futuras.GetValueOrDefault(resultado.Valor.Id)));
+    }
 }

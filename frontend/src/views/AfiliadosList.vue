@@ -41,6 +41,12 @@
                 <span :class="['badge', a.bloqueado ? 'badge-cancelado' : 'badge-atendido']">
                   {{ a.bloqueado ? 'Bloqueado' : 'Activo' }}
                 </span>
+                <!-- Dado de baja el afiliado desaparece de esta tabla y sus
+                     turnos no: si no se ven acá, no se ven en ningún lado. -->
+                <template v-if="a.consultasFuturasAgendadas">
+                  <br>
+                  <span class="secundario">{{ turnosFuturos(a) }}</span>
+                </template>
               </td>
               <td class="col-acciones">
                 <div class="acciones">
@@ -53,7 +59,7 @@
                   </button>
                   <BotonConConfirmacion
                     etiqueta="Dar de baja"
-                    pregunta="¿Dar de baja?"
+                    :pregunta="preguntaDeBaja(a)"
                     peligro
                     chico
                     :cargando="dandoDeBaja === a.id"
@@ -106,6 +112,19 @@ export default {
     etiquetaDeCupo (id) {
       if (this.cargandoCupo === id) return 'Consultando…'
       return id in this.cupos ? 'Ocultar cupo' : 'Ver cupo'
+    },
+
+    turnosFuturos ({ consultasFuturasAgendadas: n }) {
+      return n === 1 ? '1 turno futuro' : `${n} turnos futuros`
+    },
+
+    // La baja es reversible y una cancelación no, así que no cancela los turnos
+    // en cascada. Que no los cancele es lo que hay que avisar.
+    preguntaDeBaja ({ consultasFuturasAgendadas: n }) {
+      if (!n) return '¿Dar de baja?'
+      return n === 1
+        ? '¿Dar de baja? No cancela su turno.'
+        : `¿Dar de baja? No cancela sus ${n} turnos.`
     },
 
     async cargar () {

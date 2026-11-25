@@ -26,11 +26,18 @@ public record AfiliadoResponse(
     string Plan,
     int ConsultasUsadas,
     bool Bloqueado,
-    DateTime FechaAlta)
+    DateTime FechaAlta,
+    int ConsultasFuturasAgendadas)
 {
-    public static AfiliadoResponse De(Afiliado a) => new(
+    /// <remarks>
+    /// El conteo se recibe en lugar de derivarse del afiliado: la entidad no
+    /// trae sus consultas cargadas y hacerlo acá significaría una consulta por
+    /// fila. Es explícito a propósito, para que ningún camino pueda devolver la
+    /// respuesta con un conteo que nadie calculó.
+    /// </remarks>
+    public static AfiliadoResponse De(Afiliado a, int consultasFuturasAgendadas) => new(
         a.Id, a.NombreCompleto, a.DNI, a.Email, a.Telefono,
-        a.Plan, a.ConsultasUsadas, a.Bloqueado, a.FechaAlta);
+        a.Plan, a.ConsultasUsadas, a.Bloqueado, a.FechaAlta, consultasFuturasAgendadas);
 }
 
 /// <summary>
