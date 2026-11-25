@@ -23,14 +23,19 @@ public static class DbSeeder
         db.Sedes.AddRange(sedes);
         db.SaveChanges();
 
+        // El catálogo lo crea la migración, no el sembrado: una regla de negocio
+        // depende de él. Acá se lo referencia por código y no por Id, que es
+        // justamente el punto del catálogo.
+        int Esp(string codigo) => db.Especialidades.Single(e => e.Codigo == codigo).Id;
+
         var profesionales = new[]
         {
-            new Profesional { NombreCompleto = "Dr. Alejandro Ríos",   Especialidad = "Clínica Médica", SedeId = sedes[0].Id },
-            new Profesional { NombreCompleto = "Dra. Valentina Mora",  Especialidad = "Pediatría",      SedeId = sedes[0].Id },
-            new Profesional { NombreCompleto = "Dr. Carlos Benítez",   Especialidad = "Cardiología",    SedeId = sedes[1].Id },
-            new Profesional { NombreCompleto = "Lic. Julieta Arana",   Especialidad = "Nutrición",      SedeId = sedes[1].Id },
-            new Profesional { NombreCompleto = "Lic. Tomás Ibarra",    Especialidad = "Nutrición",      SedeId = sedes[2].Id },
-            new Profesional { NombreCompleto = "Dr. Martín Gutiérrez", Especialidad = "Traumatología",  SedeId = sedes[2].Id }
+            new Profesional { NombreCompleto = "Dr. Alejandro Ríos",   EspecialidadId = Esp("CLI"), SedeId = sedes[0].Id },
+            new Profesional { NombreCompleto = "Dra. Valentina Mora",  EspecialidadId = Esp("PED"), SedeId = sedes[0].Id },
+            new Profesional { NombreCompleto = "Dr. Carlos Benítez",   EspecialidadId = Esp("CAR"), SedeId = sedes[1].Id },
+            new Profesional { NombreCompleto = "Lic. Julieta Arana",   EspecialidadId = Esp(CodigosDeEspecialidad.Nutricion), SedeId = sedes[1].Id },
+            new Profesional { NombreCompleto = "Lic. Tomás Ibarra",    EspecialidadId = Esp(CodigosDeEspecialidad.Nutricion), SedeId = sedes[2].Id },
+            new Profesional { NombreCompleto = "Dr. Martín Gutiérrez", EspecialidadId = Esp("TRA"), SedeId = sedes[2].Id }
         };
         db.Profesionales.AddRange(profesionales);
         db.SaveChanges();

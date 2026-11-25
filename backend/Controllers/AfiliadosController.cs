@@ -9,8 +9,13 @@ namespace ConsultasPlan.Controllers;
 public class AfiliadosController : ApiControllerBase
 {
     private readonly IAfiliadoService _afiliados;
+    private readonly ICupoNutricionService _cupo;
 
-    public AfiliadosController(IAfiliadoService afiliados) => _afiliados = afiliados;
+    public AfiliadosController(IAfiliadoService afiliados, ICupoNutricionService cupo)
+    {
+        _afiliados = afiliados;
+        _cupo = cupo;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll() =>
@@ -39,6 +44,24 @@ public class AfiliadosController : ApiControllerBase
     {
         var resultado = await _afiliados.DarDeBaja(id);
         return resultado.EsExito ? NoContent() : Problema(resultado.Falla!);
+    }
+
+    /// <summary>
+    /// Cupo de consultas de nutrición del afiliado en el período corriente.
+    /// </summary>
+    /// <remarks>
+    /// Existe para que la política sea visible antes de intentar agendar. Una
+    /// regla que solo se manifiesta como un rechazo obliga al usuario a
+    /// descubrirla por error, que es exactamente la experiencia que el código
+    /// base ya daba.
+    /// </remarks>
+    [HttpGet("{id}/cupo-nutricion")]
+    public async Task<IActionResult> CupoNutricion(int id)
+    {
+        var resultado = await _cupo.ConsultarEstado(id);
+        return resultado.EsExito
+            ? Ok(CupoNutricionResponse.De(resultado.Valor))
+            : Problema(resultado.Falla!);
     }
 
     [HttpPost("{id}/reactivacion")]
