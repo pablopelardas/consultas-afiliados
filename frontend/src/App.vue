@@ -42,7 +42,6 @@
 <script>
 const ICONOS = {
   calendario: 'M8 7V3m8 4V3M4 11h16M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
-  mas: 'M12 8v8m-4-4h8m5 0a9 9 0 11-18 0 9 9 0 0118 0z',
   personas: 'M17 20h4v-2a3 3 0 00-5.4-1.8M17 20H7m10 0v-2c0-.7-.1-1.3-.4-1.9M7 20H3v-2a3 3 0 015.4-1.8M7 20v-2c0-.7.1-1.3.4-1.9m0 0a5 5 0 019.3 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'
 }
 
@@ -50,9 +49,11 @@ export default {
   name: 'App',
   data () {
     return {
+      // Solo secciones. "Nueva consulta" es una acción y vive donde se usa:
+      // el botón de la lista. En el menú competía por atención con las dos
+      // secciones reales y dejaba al usuario eligiendo entre un lugar y un verbo.
       items: [
         { ruta: '/consultas', etiqueta: 'Consultas', icono: ICONOS.calendario },
-        { ruta: '/consultas/nuevo', etiqueta: 'Nueva consulta', icono: ICONOS.mas },
         { ruta: '/afiliados', etiqueta: 'Afiliados', icono: ICONOS.personas }
       ]
     }
@@ -63,10 +64,9 @@ export default {
     titulo () {
       const ruta = this.$route.path
       if (ruta === '/afiliados') return 'Afiliados'
-      // El alta es un modal sobre la lista: el título de atrás sigue siendo el
-      // de la lista, y el del modal lo pone el modal.
-      if (ruta === '/consultas' || ruta === '/consultas/nuevo') return 'Consultas'
-      return ruta.startsWith('/consultas/') ? 'Detalle de consulta' : 'Plan Consultas'
+      // El alta y el detalle son diálogos sobre la lista: el título de atrás
+      // sigue siendo el de la lista, y el del diálogo lo pone el diálogo.
+      return ruta.startsWith('/consultas') ? 'Consultas' : 'Plan Consultas'
     }
   }
 }
@@ -152,9 +152,10 @@ export default {
 
 .item:hover { background: var(--nav-hover); }
 
-/* `exact-active` y no `active`: /consultas es prefijo de /consultas/nuevo, y
-   con la clase laxa quedarían dos ítems encendidos a la vez. */
-.item.router-link-exact-active {
+/* Clase de prefijo y no `exact-active`: el alta y el detalle son diálogos
+   sobre la lista, así que /consultas/nuevo y /consultas/5 siguen siendo la
+   sección Consultas y el ítem tiene que quedar encendido. */
+.item.router-link-active {
   background: var(--nav-activo);
   color: var(--texto-inverso);
   font-weight: 600;
