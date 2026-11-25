@@ -280,10 +280,6 @@ usaron como especificación ejecutable.
 | **Tests de componentes del frontend** | Se testeó la capa con lógica propia (traducción de errores, formateo de fechas). Los componentes verifican presentación sobre contratos ya verificados del lado del backend |
 | **Logging estructurado** | Hay logging y manejo global de errores; sink, correlación y niveles por ambiente son configuración de operación |
 
-El cupo por plan se señala explícitamente porque **la diferencia entre no haber
-visto el problema y haberlo visto y acotado el alcance es parte de lo que se
-evalúa**.
-
 ---
 
 ## 7. Cómo ejecutar

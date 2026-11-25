@@ -1732,9 +1732,6 @@ Construir un motor de cupos configurable sin un segundo caso real es diseñar
 contra un requerimiento que nadie formuló. El catálogo de especialidades (§5.8)
 deja el camino abierto: agregar la relación no exige rediseñar lo hecho.
 
-Se señala explícitamente porque la diferencia entre no haber visto el problema y
-haberlo visto y acotado el alcance es parte de lo que se evalúa.
-
 ### Operación de bloqueo de afiliados
 
 El modelo trae `Afiliado.Bloqueado` y `Afiliado.FechaBloqueo` (problema #12). El
