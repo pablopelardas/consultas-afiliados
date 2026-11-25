@@ -28,13 +28,13 @@ pura** —sin base de datos, sin reloj, sin efectos— detrás de una interfaz, 
 la ambigüedad del enunciado materializada en dos implementaciones de período
 (§4).
 
-### Si hay tiempo para mirar tres cosas
+### Las tres decisiones que estructuran la solución
 
-| Qué | Por qué |
+| Decisión | En qué consiste |
 |---|---|
-| **El ciclo de vida como tabla** (anexo §3.5) | Las transiciones válidas son un dato del dominio, no un `if` repetido por endpoint |
-| **La política de cupo** (§4) | Función pura: los casos borde se escriben como entrada, no como estado de base |
-| **El cliente pregunta las reglas** (§5) | El frontend no reimplementa la tabla de transiciones ni compara `especialidad === 'Nutrición'`: el backend le dice qué puede hacer |
+| **El ciclo de vida es una tabla** (§3, anexo §3.5) | Las transiciones válidas son un dato del dominio declarado una vez, no un `if` repetido en cada endpoint |
+| **La política de cupo es una función pura** (§4) | No consulta la base, no lee el reloj, no produce efectos: los casos borde se escriben como entrada y no como estado de base |
+| **El cliente pregunta las reglas en vez de copiarlas** (§4, anexo §3.10) | El frontend no reimplementa la tabla de transiciones ni compara `especialidad === 'Nutrición'`: el backend le declara qué acciones existen y qué profesionales tienen cupo |
 
 ### Tres hallazgos que no venían del enunciado
 
