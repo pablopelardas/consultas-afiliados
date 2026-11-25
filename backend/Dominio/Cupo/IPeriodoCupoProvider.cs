@@ -11,7 +11,7 @@ namespace ConsultasPlan.Dominio.Cupo;
 /// plan— y la ambigüedad queda acá, detrás de una interfaz, en lugar de
 /// resolverse dentro de la regla de negocio.
 ///
-/// La consecuencia práctica: <see cref="ICupoNutricionPolicy"/> recibe rangos y
+/// La consecuencia práctica: <see cref="ICupoPolicy"/> recibe rangos y
 /// cuenta. No sabe qué es un año. Cambiar de interpretación es cambiar de
 /// proveedor, sin tocar la política ni sus tests.
 /// </remarks>

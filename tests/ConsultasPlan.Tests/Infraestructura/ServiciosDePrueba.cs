@@ -15,7 +15,7 @@ namespace ConsultasPlan.Tests.Infraestructura;
 /// </remarks>
 public static class ServiciosDePrueba
 {
-    public static ICupoNutricionPolicy Politica(
+    public static ICupoPolicy Politica(
         int porAno = 6, int porMes = 1) =>
         new CupoNutricionPolicy(Options.Create(new CupoNutricionOptions
         {
@@ -26,7 +26,7 @@ public static class ServiciosDePrueba
     public static ICupoNutricionService Cupo(
         AppDbContext db,
         TimeProvider? reloj = null,
-        ICupoNutricionPolicy? politica = null,
+        ICupoPolicy? politica = null,
         IPeriodoCupoProvider? periodos = null) =>
         new CupoNutricionService(
             db,

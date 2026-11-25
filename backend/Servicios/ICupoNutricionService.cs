@@ -9,7 +9,7 @@ namespace ConsultasPlan.Servicios;
 /// <remarks>
 /// La división de trabajo es deliberada:
 /// <list type="bullet">
-/// <item><see cref="ICupoNutricionPolicy"/> decide. Es pura.</item>
+/// <item><see cref="ICupoPolicy"/> decide. Es pura.</item>
 /// <item>Este servicio busca lo que la política necesita para decidir.</item>
 /// </list>
 /// Sin esta separación la regla queda enredada con la consulta a la base y hay

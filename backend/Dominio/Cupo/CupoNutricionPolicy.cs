@@ -3,7 +3,17 @@ using Microsoft.Extensions.Options;
 
 namespace ConsultasPlan.Dominio.Cupo;
 
-public class CupoNutricionPolicy : ICupoNutricionPolicy
+/// <summary>
+/// La única implementación: el cupo de nutrición del enunciado.
+/// </summary>
+/// <remarks>
+/// Una sola, deliberadamente. La variación previsible —otra especialidad con
+/// otros números— es configuración y no un subtipo, porque el algoritmo no
+/// cambia. Una segunda implementación se justifica el día que aparezca una
+/// regla de otra forma (cupo compartido, autorización previa), y el contrato
+/// se deriva recién ahí, con dos casos reales a la vista.
+/// </remarks>
+public class CupoNutricionPolicy : ICupoPolicy
 {
     private readonly CupoNutricionOptions _opciones;
 
@@ -36,7 +46,7 @@ public class CupoNutricionPolicy : ICupoNutricionPolicy
 
     private EstadoDelCupo Calcular(SolicitudDeCupo solicitud)
     {
-        var consumidas = solicitud.HistorialDeNutricion.Where(Consume).ToList();
+        var consumidas = solicitud.Historial.Where(Consume).ToList();
 
         var enElAno = consumidas.Count(c => solicitud.Periodos.Anual.Contiene(c.FechaHora));
         var enElMes = consumidas.Count(c => solicitud.Periodos.Mensual.Contiene(c.FechaHora));
