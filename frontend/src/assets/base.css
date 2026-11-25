@@ -1,0 +1,243 @@
+/*
+ * Estilos de elemento. Todo lo que no es específico de una vista vive acá para
+ * que las vistas queden con su marcado y su lógica, no con su apariencia.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap");
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: var(--fuente);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-family: var(--fuente-display);
+  color: var(--texto-fuerte);
+  letter-spacing: -.01em;
+  line-height: 1.3;
+}
+
+a { color: var(--marca); }
+
+/* ── Botones ──────────────────────────────────────────────────────── */
+
+button,
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e-xs);
+  height: 36px;
+  padding: 0 var(--e-md);
+  border: 1px solid transparent;
+  border-radius: var(--radio-control);
+  background: var(--marca);
+  color: var(--texto-inverso);
+  font-family: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+button:hover:not(:disabled) { background: var(--marca-hover); }
+button:active:not(:disabled) { background: var(--marca-activo); }
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: var(--anillo-foco);
+  border-color: var(--marca);
+}
+
+button:disabled {
+  background: var(--superficie-apagada);
+  color: var(--texto-deshabilitado);
+  cursor: not-allowed;
+}
+
+.btn-secundario {
+  background: var(--superficie);
+  color: var(--texto-sutil);
+  border-color: var(--borde-sutil);
+}
+.btn-secundario:hover:not(:disabled) {
+  background: var(--superficie-tenue);
+  border-color: var(--borde);
+}
+
+.btn-danger {
+  background: var(--peligro);
+}
+.btn-danger:hover:not(:disabled) { background: var(--peligro-hover); }
+
+.btn-chico { height: 30px; padding: 0 var(--e-sm); font-size: var(--t-xs); }
+
+/* ── Tablas ───────────────────────────────────────────────────────── */
+
+.tabla-envoltorio {
+  background: var(--superficie);
+  border: 1px solid var(--borde-sutil);
+  border-radius: var(--radio-tarjeta);
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+th {
+  background: var(--fila-encabezado);
+  color: var(--texto-sutil);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: var(--e-sm) var(--e-md);
+  border-bottom: 1px solid var(--borde-sutil);
+  white-space: nowrap;
+}
+
+td {
+  padding: var(--e-sm) var(--e-md);
+  border-bottom: 1px solid var(--borde-sutil);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--fila-hover); }
+
+.col-id { color: var(--texto-apagado); font-variant-numeric: tabular-nums; width: 1%; }
+.col-acciones { width: 1%; white-space: nowrap; }
+.principal { font-weight: 600; color: var(--texto-fuerte); }
+.secundario { color: var(--texto-apagado); font-size: var(--t-xs); }
+
+/* ── Formularios ──────────────────────────────────────────────────── */
+
+.campo { margin-bottom: var(--e-md); }
+
+.campo label {
+  display: block;
+  margin-bottom: var(--e-2xs);
+  color: var(--texto-sutil);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+input,
+select {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--e-sm);
+  border: 1px solid var(--borde-sutil);
+  border-radius: var(--radio-control);
+  background: var(--superficie);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: var(--t-sm);
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+
+input::placeholder { color: var(--texto-deshabilitado); }
+input:disabled, select:disabled { background: var(--superficie-tenue); color: var(--texto-deshabilitado); }
+
+select {
+  appearance: none;
+  padding-right: var(--e-xl);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23475165' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 18px;
+}
+
+.error-campo {
+  margin: var(--e-2xs) 0 0;
+  color: var(--texto-peligro);
+  font-size: var(--t-xs);
+}
+
+/* ── Tarjetas ─────────────────────────────────────────────────────── */
+
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde-sutil);
+  border-radius: var(--radio-tarjeta);
+  padding: var(--e-lg);
+}
+
+/* ── Badges de estado ─────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radio-pill);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radio-pill);
+  background: currentColor;
+}
+
+.badge-pendiente    { background: var(--alerta-tenue);  color: var(--texto-alerta); }
+.badge-confirmado   { background: var(--marca-tenue);   color: var(--marca-activo); }
+.badge-atendido     { background: var(--exito-tenue);   color: var(--texto-exito); }
+.badge-cancelado    { background: var(--peligro-tenue); color: var(--texto-peligro); }
+.badge-inasistencia { background: var(--neutro-tenue);  color: var(--texto-neutro); }
+
+/* ── Utilidades mínimas ───────────────────────────────────────────── */
+
+.vacio {
+  padding: var(--e-2xl) var(--e-lg);
+  text-align: center;
+  color: var(--texto-apagado);
+}
+
+.cargando {
+  display: flex;
+  align-items: center;
+  gap: var(--e-xs);
+  padding: var(--e-lg);
+  color: var(--texto-apagado);
+}
+
+.hilandero {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--borde-sutil);
+  border-top-color: var(--marca);
+  border-radius: var(--radio-pill);
+  animation: girar .7s linear infinite;
+}
+
+@keyframes girar { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hilandero { animation-duration: 2.4s; }
+  * { transition-duration: .01ms !important; }
+}

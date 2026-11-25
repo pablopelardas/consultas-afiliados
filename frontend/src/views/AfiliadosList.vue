@@ -1,62 +1,79 @@
 <template>
   <div>
-    <h2>Afiliados</h2>
-
     <AvisoDeError :error="errorDeCarga" @reintentar="cargar" />
     <AvisoDeError :error="errorDeAccion" />
 
-    <p v-if="cargando">Cargando afiliados…</p>
+    <p class="conteo" v-if="!cargando">
+      {{ afiliados.length }} {{ afiliados.length === 1 ? 'afiliado activo' : 'afiliados activos' }}
+    </p>
 
-    <table v-else-if="afiliados.length">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Nombre</th>
-          <th>DNI</th>
-          <th>Email</th>
-          <th>Teléfono</th>
-          <th>Plan</th>
-          <th>Bloqueado</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="a in afiliados" :key="a.id">
+    <div v-if="cargando" class="cargando">
+      <span class="hilandero" />
+      Cargando afiliados…
+    </div>
+
+    <div v-else-if="afiliados.length" class="tabla-envoltorio">
+      <table>
+        <thead>
           <tr>
-            <td>{{ a.id }}</td>
-            <td>{{ a.nombreCompleto }}</td>
-            <td>{{ a.dni }}</td>
-            <td>{{ a.email }}</td>
-            <td>{{ a.telefono }}</td>
-            <td>{{ a.plan }}</td>
-            <td>
-              <span v-if="a.bloqueado" style="color: #d32f2f; font-weight: 600">Sí</span>
-              <span v-else style="color: #388e3c">No</span>
-            </td>
-            <td class="acciones">
-              <button class="btn-neutro" :disabled="cargandoCupo === a.id" @click="alternarCupo(a.id)">
-                {{ etiquetaDeCupo(a.id) }}
-              </button>
-              <BotonConConfirmacion
-                etiqueta="Dar de baja"
-                pregunta="¿Dar de baja?"
-                peligro
-                :cargando="dandoDeBaja === a.id"
-                :disabled="dandoDeBaja !== null"
-                @confirmado="darDeBaja(a.id)"
-              />
-            </td>
+            <th class="col-id">#</th>
+            <th>Afiliado</th>
+            <th>Contacto</th>
+            <th>Plan</th>
+            <th>Estado</th>
+            <th class="col-acciones"></th>
           </tr>
-          <tr v-if="a.id in cupos">
-            <td colspan="8" class="fila-cupo">
-              <CupoNutricion :cupo="cupos[a.id]" :cargando="cargandoCupo === a.id" />
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          <template v-for="a in afiliados" :key="a.id">
+            <tr>
+              <td class="col-id">{{ a.id }}</td>
+              <td>
+                <span class="principal">{{ a.nombreCompleto }}</span><br>
+                <span class="secundario">DNI {{ a.dni }}</span>
+              </td>
+              <td>
+                <span>{{ a.email }}</span><br>
+                <span class="secundario">{{ a.telefono }}</span>
+              </td>
+              <td>{{ a.plan }}</td>
+              <td>
+                <span :class="['badge', a.bloqueado ? 'badge-cancelado' : 'badge-atendido']">
+                  {{ a.bloqueado ? 'Bloqueado' : 'Activo' }}
+                </span>
+              </td>
+              <td class="col-acciones">
+                <div class="acciones">
+                  <button
+                    class="btn-secundario btn-chico"
+                    :disabled="cargandoCupo === a.id"
+                    @click="alternarCupo(a.id)"
+                  >
+                    {{ etiquetaDeCupo(a.id) }}
+                  </button>
+                  <BotonConConfirmacion
+                    etiqueta="Dar de baja"
+                    pregunta="¿Dar de baja?"
+                    peligro
+                    chico
+                    :cargando="dandoDeBaja === a.id"
+                    :disabled="dandoDeBaja !== null"
+                    @confirmado="darDeBaja(a.id)"
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr v-if="a.id in cupos" class="fila-cupo">
+              <td colspan="6">
+                <CupoNutricion :cupo="cupos[a.id]" :cargando="cargandoCupo === a.id" />
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
 
-    <p v-else-if="!errorDeCarga">No hay afiliados registrados.</p>
+    <p v-else-if="!errorDeCarga" class="vacio">No hay afiliados registrados.</p>
   </div>
 </template>
 
@@ -144,16 +161,22 @@ export default {
 </script>
 
 <style scoped>
+.conteo {
+  margin: 0 0 var(--e-md);
+  color: var(--texto-apagado);
+  font-size: var(--t-sm);
+}
+
 .acciones {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--e-xs);
 }
-.btn-neutro { background: #e0e0e0; color: #333 }
-.btn-neutro:hover { background: #cfcfcf }
-.btn-neutro:disabled { background: #eee; color: #999; cursor: not-allowed }
-.fila-cupo {
-  background: #fafbfc;
-  padding: 12px 16px 2px;
+
+.fila-cupo td {
+  padding: var(--e-sm) var(--e-md) 0;
+  background: var(--superficie);
 }
+
+.fila-cupo:hover td { background: var(--superficie); }
 </style>

@@ -1,55 +1,69 @@
 <template>
   <div>
-    <h2>Consultas</h2>
-
     <AvisoDeError :error="errorDeCarga" @reintentar="cargar" />
     <AvisoDeError :error="errorDeAccion" />
 
-    <p v-if="cargando">Cargando consultas…</p>
+    <div class="encabezado-lista">
+      <p class="conteo">
+        <template v-if="!cargando">{{ consultas.length }} {{ consultas.length === 1 ? 'consulta' : 'consultas' }}</template>
+      </p>
+      <router-link to="/consultas/nuevo" class="boton">Nueva consulta</router-link>
+    </div>
 
-    <table v-else-if="consultas.length">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Afiliado</th>
-          <th>Profesional</th>
-          <th>Especialidad</th>
-          <th>Fecha y hora</th>
-          <th>Modalidad</th>
-          <th>Estado</th>
-          <th>Motivo</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="consulta in consultas" :key="consulta.id">
-          <td>{{ consulta.id }}</td>
-          <td>{{ consulta.afiliado?.nombreCompleto }}</td>
-          <td>{{ consulta.profesional?.nombreCompleto }}</td>
-          <td>{{ consulta.profesional?.especialidad }}</td>
-          <td>{{ formatFecha(consulta.fechaHora) }}</td>
-          <td>{{ consulta.modalidad }}</td>
-          <td>
-            <span :class="['badge', `badge-${consulta.estado?.toLowerCase()}`]">{{ consulta.estado }}</span>
-          </td>
-          <td>{{ consulta.motivo }}</td>
-          <td class="acciones">
-            <router-link :to="`/consultas/${consulta.id}`">Ver</router-link>
-            <BotonConConfirmacion
-              v-if="puedeCancelar(consulta)"
-              etiqueta="Cancelar"
-              pregunta="¿Cancelar?"
-              peligro
-              :cargando="cancelando === consulta.id"
-              :disabled="cancelando !== null"
-              @confirmado="cancelar(consulta)"
-            />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-if="cargando" class="cargando">
+      <span class="hilandero" />
+      Cargando consultas…
+    </div>
 
-    <p v-else-if="!errorDeCarga">No hay consultas registradas.</p>
+    <div v-else-if="consultas.length" class="tabla-envoltorio">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-id">#</th>
+            <th>Afiliado</th>
+            <th>Profesional</th>
+            <th>Fecha y hora</th>
+            <th>Modalidad</th>
+            <th>Estado</th>
+            <th>Motivo</th>
+            <th class="col-acciones"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="consulta in consultas" :key="consulta.id">
+            <td class="col-id">{{ consulta.id }}</td>
+            <td class="principal">{{ consulta.afiliado?.nombreCompleto }}</td>
+            <td>
+              <span class="principal">{{ consulta.profesional?.nombreCompleto }}</span><br>
+              <span class="secundario">{{ consulta.profesional?.especialidad }}</span>
+            </td>
+            <td>{{ formatFecha(consulta.fechaHora) }}</td>
+            <td>{{ consulta.modalidad }}</td>
+            <td>
+              <span :class="['badge', `badge-${consulta.estado?.toLowerCase()}`]">{{ consulta.estado }}</span>
+            </td>
+            <td class="secundario">{{ consulta.motivo }}</td>
+            <td class="col-acciones">
+              <div class="acciones">
+                <router-link :to="`/consultas/${consulta.id}`" class="boton btn-secundario btn-chico">Ver</router-link>
+                <BotonConConfirmacion
+                  v-if="puedeCancelar(consulta)"
+                  etiqueta="Cancelar"
+                  pregunta="¿Cancelar?"
+                  peligro
+                  chico
+                  :cargando="cancelando === consulta.id"
+                  :disabled="cancelando !== null"
+                  @confirmado="cancelar(consulta)"
+                />
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p v-else-if="!errorDeCarga" class="vacio">No hay consultas registradas.</p>
   </div>
 </template>
 
@@ -119,20 +133,25 @@ export default {
 </script>
 
 <style scoped>
-.badge {
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
+.encabezado-lista {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-md);
+  margin-bottom: var(--e-md);
 }
-.badge-pendiente    { background: #fff3cd; color: #856404; }
-.badge-confirmado   { background: #d4edda; color: #155724; }
-.badge-cancelado    { background: #f8d7da; color: #721c24; }
-.badge-atendido     { background: #d1ecf1; color: #0c5460; }
-.badge-inasistencia { background: #e2e3e5; color: #383d41; }
+
+.conteo {
+  margin: 0;
+  color: var(--texto-apagado);
+  font-size: var(--t-sm);
+}
+
 .acciones {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--e-xs);
 }
+
+a.boton { text-decoration: none; }
 </style>

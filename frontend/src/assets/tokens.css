@@ -1,0 +1,98 @@
+/*
+ * Tokens de diseño.
+ *
+ * Capa semántica propia: los componentes nunca nombran un color, nombran un
+ * rol ("superficie", "peligro-tenue"). Cambiar la paleta es tocar este archivo
+ * y nada más; con literales repartidos por las vistas, cambiarla es una
+ * búsqueda y reemplazo que siempre deja algo atrás.
+ */
+
+:root {
+  /* ── Superficies ───────────────────────────────────────────────── */
+  --fondo: #f3f6f9;
+  --superficie: #ffffff;
+  --superficie-tenue: #f3f6f9;
+  --superficie-apagada: #ededed;
+  --superficie-fuerte: #0f1438;
+
+  /* ── Marca ─────────────────────────────────────────────────────── */
+  --marca: #1e88f5;
+  --marca-hover: #1b73d0;
+  --marca-activo: #195eab;
+  --marca-suave: #c9e9fc;
+  --marca-tenue: #e4f4fd;
+
+  /* ── Estados ───────────────────────────────────────────────────── */
+  --peligro: #ef4444;
+  --peligro-hover: #c73b3f;
+  --peligro-tenue: #fef2f2;
+  --texto-peligro: #c73b3f;
+
+  --alerta: #f59e0b;
+  --alerta-tenue: #fffbeb;
+  --texto-alerta: #a26c15;
+
+  --exito: #22c55e;
+  --exito-tenue: #f0fdf4;
+  --texto-exito: #1b854b;
+
+  --neutro-tenue: #f0f1f4;
+  --texto-neutro: #475165;
+
+  /* ── Texto ─────────────────────────────────────────────────────── */
+  --texto: #212121;
+  --texto-sutil: #475165;
+  --texto-apagado: #717171;
+  --texto-fuerte: #0f1438;
+  --texto-deshabilitado: #a2acbe;
+  --texto-inverso: #ffffff;
+
+  /* ── Bordes ────────────────────────────────────────────────────── */
+  --borde: #a2acbe;
+  --borde-sutil: #d8dbe5;
+  --borde-foco: #475165;
+
+  /* ── Filas de tabla ────────────────────────────────────────────── */
+  --fila-encabezado: #f3f6f9;
+  --fila-hover: #e4f4fd;
+
+  /* ── Navegación ────────────────────────────────────────────────── */
+  --nav-ancho: 264px;
+  --nav-item-alto: 36px;
+  --nav-activo: #475165;
+  --nav-hover: #c9e9fc;
+  --nav-seccion: #a2acbe;
+
+  /* ── Espaciado: escala de 4 ────────────────────────────────────── */
+  --e-2xs: 4px;
+  --e-xs: 8px;
+  --e-sm: 12px;
+  --e-md: 16px;
+  --e-lg: 24px;
+  --e-xl: 32px;
+  --e-2xl: 48px;
+
+  /* ── Radios ────────────────────────────────────────────────────── */
+  --radio-control: 10px;
+  --radio-tarjeta: 12px;
+  --radio-panel: 16px;
+  --radio-pill: 9999px;
+
+  /* ── Tipografía ────────────────────────────────────────────────── */
+  --fuente: "Inter", "Segoe UI", -apple-system, system-ui, sans-serif;
+  --fuente-display: "Poppins", var(--fuente);
+  --fuente-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+
+  --t-2xs: 11px;
+  --t-xs: 12px;
+  --t-sm: 14px;
+  --t-md: 16px;
+  --t-lg: 18px;
+  --t-xl: 20px;
+  --t-2xl: 24px;
+
+  /* ── Sombras ───────────────────────────────────────────────────── */
+  --sombra-tarjeta: 0 1px 2px rgba(15, 20, 56, .04), 0 1px 3px rgba(15, 20, 56, .06);
+  --sombra-elevada: 0 4px 12px rgba(15, 20, 56, .1);
+  --anillo-foco: 0 0 0 3px rgba(30, 136, 245, .18);
+}
