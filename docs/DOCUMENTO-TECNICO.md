@@ -573,6 +573,201 @@ modo que el cambio no lo rompe.
 
 ---
 
+### 3.8 Capa de servicios — `refactor/capa-servicios`
+
+Hasta acá los controladores hacían tres trabajos a la vez: leer y escribir en la
+base, decidir las reglas de negocio y traducir el resultado a HTTP. Esta rama
+los deja con uno solo.
+
+#### El problema de fondo
+
+No es "mucho código en el controlador". Es que **las reglas de negocio solo
+existen dentro de un método de controlador**, y eso tiene tres consecuencias
+concretas:
+
+1. **No se pueden reusar.** Si mañana la cancelación también se dispara desde un
+   job nocturno o un comando de consola, hay que reescribir la regla o invocar
+   un controlador desde fuera de HTTP.
+2. **No se pueden verificar sin traducir.** Para afirmar "no se cancela con 12
+   horas de anticipación" había que afirmar "devuelve 409". La regla no habla de
+   códigos de estado; el test sí estaba obligado a hablarlos.
+3. **Se pueden duplicar en silencio.** Y se duplicaron: la misma regla escrita
+   en dos endpoints se desincroniza en cuanto alguien toca uno.
+
+#### Las tres piezas
+
+**`ServiceResult<T>` — el resultado de una operación de dominio.**
+
+Una operación de negocio tiene tres desenlaces posibles: salió bien y devuelve
+algo, o no salió y hay un motivo. Las alternativas habituales para expresarlo
+son peores:
+
+| Alternativa | Por qué no |
+|---|---|
+| Devolver `null` en el error | Un `null` no distingue "no existe" de "no se permite", y el consumidor se olvida de chequearlo |
+| Lanzar excepciones | Una regla de negocio que se cumple todos los días no es una condición excepcional; además el flujo de control queda invisible en la firma |
+| Devolver `IActionResult` | Ata el servicio a HTTP: es exactamente lo que se quiere romper |
+
+`ServiceResult<T>` dice en la firma que la operación puede no completarse, y
+obliga a mirar el motivo antes de leer el valor:
+
+```csharp
+public T Valor => EsExito
+    ? _valor!
+    : throw new InvalidOperationException(
+        $"La operación no tuvo éxito ({Falla!.Tipo}): no hay valor que leer.");
+```
+
+Lanza a propósito. Leer el valor de una operación fallida no es un caso a
+manejar, es un error de programación: si devolviera `null`, el defecto
+aparecería mucho más adelante y en otro lugar.
+
+**`Falla` — el motivo, nombrado en términos de dominio.**
+
+```csharp
+public enum TipoDeFalla { NoEncontrado, Conflicto, EntradaInvalida }
+```
+
+Son tres, no treinta, porque son las tres situaciones que un consumidor trata
+distinto. El servicio nombra el motivo; **traducirlo a un código HTTP es del
+controlador**.
+
+**Interfaces — `IConsultaService`, `IAfiliadoService`, `ICatalogoService`.**
+
+El controlador depende del contrato, no de la implementación. Eso no es
+ceremonia: es lo que permite el test de la sección siguiente.
+
+#### Qué quedó en el controlador
+
+Exactamente una cosa, y está en un único lugar:
+
+```csharp
+// ApiControllerBase
+protected IActionResult Problema(Falla falla)
+{
+    if (falla.Tipo == TipoDeFalla.EntradaInvalida) { /* 400 con ModelState */ }
+
+    var (codigo, titulo) = falla.Tipo switch
+    {
+        TipoDeFalla.NoEncontrado => (404, "Recurso no encontrado"),
+        TipoDeFalla.Conflicto    => (409, "La operación no es posible en el estado actual"),
+        ...
+    };
+
+    return Problem(detail: falla.Detalle, statusCode: codigo, title: titulo);
+}
+```
+
+Un solo lugar donde se elige el código de estado. Si cada controlador escribiera
+su propio `Problem(...)`, el formato de error volvería a ser distinto por
+endpoint — que es de donde se venía.
+
+Los endpoints quedan así:
+
+```csharp
+[HttpPost("{id}/cancelacion")]
+public async Task<IActionResult> CancelarConsulta(int id) =>
+    Responder(await _consultas.Cancelar(id));
+```
+
+**Invariante verificable del refactor:** ningún controlador referencia
+`AppDbContext` ni `Microsoft.EntityFrameworkCore`. Por eso `SedesController` y
+`ProfesionalesController`, que son dos lecturas sin reglas, también pasan por
+`ICatalogoService`: dos controladores con acceso directo a la persistencia
+alcanzan para que la invariante no sea una. Se agrupan en un solo servicio en
+lugar de uno por tabla, porque un servicio por catálogo serían archivos que no
+dicen nada.
+
+#### Un agujero que el refactor cerró
+
+El código base tenía el endpoint genérico `PUT /consultas/{id}/estado`, que
+asignaba el estado sin validar nada. En §3.5 se le agregó la tabla de
+transiciones, pero seguía **salteando las reglas temporales**: con
+`{"estado": "Cancelado"}` se cancelaba una consulta de las próximas 12 horas,
+evadiendo la ventana de 24 que `POST /cancelacion` sí respeta.
+
+La causa es estructural: las reglas estaban repetidas por endpoint, así que
+agregarlas a uno no las agregaba al otro. Con la capa de servicios hay un solo
+camino:
+
+```csharp
+private async Task<ServiceResult<Consulta>> Transicionar(int id, EstadoConsulta destino)
+{
+    // buscar → validar transición → validar regla temporal del destino → guardar
+}
+
+private string? ReglaTemporalIncumplida(Consulta consulta, EstadoConsulta destino) => destino switch
+{
+    EstadoConsulta.Cancelado when consulta.FechaHora - Ahora < AnticipacionMinimaParaCancelar => "...",
+    EstadoConsulta.Inasistencia when consulta.FechaHora > Ahora => "...",
+    EstadoConsulta.Atendido when !consulta.FechaHora.IsInCurrentYear(Ahora) => "...",
+    _ => null
+};
+```
+
+Las cuatro operaciones de estado —tres con nombre propio y la genérica— pasan
+por el mismo método. **El atajo no se cierra recordando cerrarlo: deja de
+existir.** Eso es lo que significa que un refactor corrija defectos sin
+buscarlos.
+
+#### Lo que esto habilita en los tests
+
+Los tests de reglas de negocio pasaron del controlador al servicio. Dejaron de
+hablar HTTP:
+
+```csharp
+// antes
+Assert.Equal(StatusCodes.Status409Conflict, Assert.IsType<ObjectResult>(resultado).StatusCode);
+
+// ahora
+AssertResultado.Conflicto(resultado, caso);
+```
+
+Y apareció una clase de test que antes era imposible: **sustituir el servicio**.
+
+```csharp
+private sealed class ConsultaServiceFalso : IConsultaService { /* devuelve la Falla pedida */ }
+
+[Fact]
+public async Task Conflicto_se_traduce_a_409()
+{
+    var resultado = await new ConsultasController(
+        new ConsultaServiceFalso(Falla.Conflicto("No se puede en este estado."))
+    ).CancelarConsulta(1);
+
+    Assert.Equal(StatusCodes.Status409Conflict,
+        Assert.IsType<ObjectResult>(resultado).StatusCode);
+}
+```
+
+Sin base de datos, sin reloj y sin pipeline: se le entrega al controlador un
+servicio que devuelve exactamente la falla a probar. **Antes, para ver un 404
+había que construir el estado de base que lo produce.** Esa es la diferencia
+práctica entre depender de una interfaz y depender de una clase concreta — no
+un principio abstracto, un test que antes no se podía escribir.
+
+```
+dotnet test   →  84 passed, 0 failed    (eran 77)
+```
+
+#### La decisión discutible
+
+Los servicios **devuelven entidades** (`Consulta`, `Afiliado`), no contratos de
+salida. Mapear a `ConsultaResponse` queda en el controlador, porque qué campos
+se exponen y cómo se anidan es una decisión de presentación.
+
+La **entrada**, en cambio, reutiliza los contratos de `Contratos.Requests`.
+Es asimétrico a propósito: un `CrearConsultaRequest` es exactamente la lista de
+parámetros de la operación y nada más —no trae identidad ni estado—, así que
+definir un tipo paralelo idéntico en la capa de servicios sería duplicación sin
+beneficio. Los contratos de salida sí codifican decisiones de presentación, y
+por eso no cruzan hacia adentro.
+
+En un sistema con más de un consumidor la simetría valdría la pena. Acá se
+prefirió no agregar una capa de tipos que no separa nada.
+
+---
+
 ## 4. Problemas detectados en el código base
 
 Inventario completo de lo relevado. La columna **Estado** indica si está
@@ -586,7 +781,7 @@ corregido, planificado o fuera de alcance.
 | 2 | No compila: falta `using` de `Helpers` | `ConsultasController.cs:102` | Corregido |
 | 3 | `GET` que muta estado: cancelar una consulta responde a `[HttpGet]`. Un prefetch del navegador o un crawler puede cancelar consultas | `ConsultasController.cs:68` | Corregido |
 | 4 | Ventana de cancelación mal calculada: valida `FromHours(23)` mientras el mensaje al usuario dice 24 horas | `ConsultasController.cs:74` | Corregido |
-| 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Corregido |
+| 5 | `PUT /{id}/estado` permite cualquier transición sin validar. Saltea la regla de 24 horas, la de inasistencia sobre consulta futura y salteará también el cupo de nutrición. Tampoco valida `Enum.IsDefined` | `ConsultasController.cs:110` | Corregido — tabla de transiciones en §3.5; reglas temporales en §3.8, donde el atajo deja de existir |
 | 6 | Sin máquina de estados: se puede marcar inasistencia sobre una consulta cancelada, o registrar atención sobre una cancelada | `ConsultasController.cs` | Corregido |
 | 7 | `DateTime.Now` y `DateTime.UtcNow` mezclados: se persiste en UTC y se compara contra hora local. En Argentina son 3 horas de desvío sobre la ventana de 24 horas y sobre el cálculo de "año en curso". Se suma la pérdida de `DateTimeKind` al leer de SQLite | Varios | Corregido |
 | 8 | Over-posting: los endpoints reciben las entidades de EF directamente (`[FromBody] Consulta`, `[FromBody] Afiliado`). El cliente puede enviar `Bloqueado`, `ConsultasUsadas`, `isActive` y objetos anidados que EF intentará persistir | Controllers | Corregido |
@@ -598,7 +793,7 @@ corregido, planificado o fuera de alcance.
 | 14 | `Especialidad` es texto libre. La política de cupo dependería de comparar contra el literal `"Nutrición"` | `Models/Profesional.cs` | Planificado (ver §5.8) |
 | 15 | `EnsureCreated()` sin migraciones, en un sistema descrito como productivo: el esquema no puede evolucionar de forma controlada | `Program.cs` | Planificado |
 | 16 | Nomenclatura: `createdAt` e `isActive` en camelCase | `Models/Afiliado.cs` | Corregido — propiedades renombradas; las columnas conservan su nombre para no requerir migración |
-| 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Parcial — las entidades ya no son contrato de API y `IgnoreCycles` se eliminó; la capa de servicios va en `refactor/capa-servicios` |
+| 17 | Sin capa de aplicación: los controladores acceden a `DbContext` directamente y las entidades se filtran como contrato de API. `ReferenceHandler.IgnoreCycles` es un paliativo para serializar grafos de EF | Controllers | Corregido — ningún controlador referencia `AppDbContext`; reglas en `Servicios/`, resultado tipado `ServiceResult<T>` |
 | 18 | Sin manejo global de errores, sin `ProblemDetails`, sin logging | `Program.cs` | Corregido — logging estructurado queda fuera de alcance (§6) |
 | 19 | Sin tests | — | Corregido |
 | 20 | CORS `AllowAnyOrigin` y Swagger expuesto en todos los ambientes | `Program.cs` | Ver §6 |
@@ -919,9 +1114,9 @@ solicitado y por afectar el contrato que consume el frontend.
 |---|---|---|
 | 0 | Repositorio, línea base | Completo |
 | 1 | Errores de compilación | Completo |
-| 2 | Normalización, convenciones, proyecto de tests | En curso |
-| 3 | Correcciones del backend | En curso — manejo de fechas y ventana de cancelación completos |
-| 4 | Capa de servicios con interfaces | Pendiente |
+| 2 | Normalización, convenciones, proyecto de tests | Completo |
+| 3 | Correcciones del backend | Completo — fechas, semántica, ciclo de vida, historial y contratos |
+| 4 | Capa de servicios con interfaces | Completo |
 | 5 | Política de cupo de nutrición | Pendiente |
 | 6 | Frontend: errores visibles y validación | Pendiente |
 | 7 | Cierre del documento | En curso |

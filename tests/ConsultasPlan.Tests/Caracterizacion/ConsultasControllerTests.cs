@@ -1,7 +1,6 @@
 using ConsultasPlan.Contratos;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
-using Microsoft.AspNetCore.Mvc;
 
 namespace ConsultasPlan.Tests.Caracterizacion;
 
@@ -32,9 +31,7 @@ public class ConsultasControllerTests
         var ocupado = Reloj.Ahora.AddDays(30);
         db.AgregarConsulta(afiliado, profesional, ocupado, EstadoConsulta.Confirmado);
 
-        var controlador = new ConsultasPlan.Controllers.ConsultasController(db, Reloj.Fijo());
-
-        var resultado = await controlador.CrearConsulta(new CrearConsultaRequest
+        var resultado = await ServiciosDePrueba.Consultas(db).Crear(new CrearConsultaRequest
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
@@ -43,6 +40,6 @@ public class ConsultasControllerTests
             Motivo = "Se superpone con la anterior"
         });
 
-        Assert.IsType<CreatedAtActionResult>(resultado);
+        AssertResultado.Exito(resultado);
     }
 }

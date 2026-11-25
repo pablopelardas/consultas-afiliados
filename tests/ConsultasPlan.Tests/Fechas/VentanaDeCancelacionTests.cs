@@ -1,8 +1,5 @@
-using ConsultasPlan.Controllers;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 
 namespace ConsultasPlan.Tests.Fechas;
 
@@ -31,22 +28,18 @@ public class VentanaDeCancelacionTests
         var consulta = db.AgregarConsulta(
             afiliado, profesional, Reloj.Ahora.AddHours(horasDeAnticipacion));
 
-        var controlador = new ConsultasController(db, Reloj.Fijo());
-
-        var resultado = await controlador.CancelarConsulta(consulta.Id);
+        var resultado = await ServiciosDePrueba.Consultas(db).Cancelar(consulta.Id);
 
         var estadoFinal = db.Consultas.Find(consulta.Id)!.Estado;
 
         if (deberiaAceptar)
         {
-            Assert.True(resultado is OkObjectResult, $"Debía aceptar {caso}.");
+            AssertResultado.Exito(resultado);
             Assert.Equal(EstadoConsulta.Cancelado, estadoFinal);
         }
         else
         {
-            // 409: la petición es válida, el estado del recurso no la permite.
-            Assert.Equal(StatusCodes.Status409Conflict,
-                Assert.IsType<ObjectResult>(resultado).StatusCode);
+            AssertResultado.Conflicto(resultado, caso);
             Assert.Equal(EstadoConsulta.Pendiente, estadoFinal);
         }
     }
@@ -57,17 +50,13 @@ public class VentanaDeCancelacionTests
     public async Task Cancelar_un_minuto_antes_del_limite_es_rechazado()
     {
         using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
         var consulta = db.AgregarConsulta(
-            afiliado, profesional, Reloj.Ahora.AddHours(24).AddMinutes(-1));
+            db.AgregarAfiliado(), db.AgregarProfesional(),
+            Reloj.Ahora.AddHours(24).AddMinutes(-1));
 
-        var controlador = new ConsultasController(db, Reloj.Fijo());
+        var resultado = await ServiciosDePrueba.Consultas(db).Cancelar(consulta.Id);
 
-        var resultado = await controlador.CancelarConsulta(consulta.Id);
-
-        Assert.Equal(StatusCodes.Status409Conflict,
-            Assert.IsType<ObjectResult>(resultado).StatusCode);
+        AssertResultado.Conflicto(resultado);
         Assert.Equal(EstadoConsulta.Pendiente, db.Consultas.Find(consulta.Id)!.Estado);
     }
 
@@ -78,19 +67,30 @@ public class VentanaDeCancelacionTests
     public async Task La_ventana_no_depende_del_huso_horario_del_servidor()
     {
         using var db = ContextoDePrueba.Crear();
-        var afiliado = db.AgregarAfiliado();
-        var profesional = db.AgregarProfesional();
 
         // 25 horas de anticipación: aceptable bajo cualquier lectura correcta.
         // Con el desvío de 3 horas de Argentina, el cálculo erróneo lo habría
         // visto como 22 y lo habría rechazado.
         var consulta = db.AgregarConsulta(
-            afiliado, profesional, Reloj.Ahora.AddHours(25));
+            db.AgregarAfiliado(), db.AgregarProfesional(), Reloj.Ahora.AddHours(25));
 
-        var controlador = new ConsultasController(db, Reloj.Fijo());
+        AssertResultado.Exito(await ServiciosDePrueba.Consultas(db).Cancelar(consulta.Id));
+    }
 
-        var resultado = await controlador.CancelarConsulta(consulta.Id);
+    // El endpoint genérico de cambio de estado era, en el código base, la vía
+    // por la que se evadían todas las reglas. Un solo camino de transición
+    // dentro del servicio cierra el atajo sin que haya que recordarlo.
+    [Fact]
+    public async Task El_cambio_de_estado_generico_no_saltea_la_ventana()
+    {
+        using var db = ContextoDePrueba.Crear();
+        var consulta = db.AgregarConsulta(
+            db.AgregarAfiliado(), db.AgregarProfesional(), Reloj.Ahora.AddHours(12));
 
-        Assert.IsType<OkObjectResult>(resultado);
+        var resultado = await ServiciosDePrueba.Consultas(db)
+            .CambiarEstado(consulta.Id, EstadoConsulta.Cancelado);
+
+        AssertResultado.Conflicto(resultado);
+        Assert.Equal(EstadoConsulta.Pendiente, db.Consultas.Find(consulta.Id)!.Estado);
     }
 }

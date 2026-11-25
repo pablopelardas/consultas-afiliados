@@ -1,7 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ConsultasPlan.Contratos;
-using ConsultasPlan.Data;
+using ConsultasPlan.Servicios;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ConsultasPlan.Controllers;
 
@@ -9,17 +8,11 @@ namespace ConsultasPlan.Controllers;
 [Route("[controller]")]
 public class ProfesionalesController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly ICatalogoService _catalogo;
 
-    public ProfesionalesController(AppDbContext context)
-    {
-        _context = context;
-    }
+    public ProfesionalesController(ICatalogoService catalogo) => _catalogo = catalogo;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
-    {
-        var profesionales = await _context.Profesionales.Include(p => p.Sede).ToListAsync();
-        return Ok(profesionales.Select(ProfesionalResponse.De));
-    }
+    public async Task<IActionResult> GetAll() =>
+        Ok((await _catalogo.ListarProfesionales()).Select(ProfesionalResponse.De));
 }
