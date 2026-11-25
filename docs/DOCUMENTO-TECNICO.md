@@ -1068,6 +1068,173 @@ dotnet test   →  158 passed, 0 failed    (eran 84)
 
 ---
 
+### 3.10 Manejo de errores y experiencia de uso — `fix/ux-manejo-errores`
+
+Resuelve los problemas **#21 a #23** y **#25 a #28**.
+
+#### El problema: el backend explica y el frontend lo tira
+
+Las secciones anteriores invirtieron trabajo en que cada rechazo diga qué pasó,
+por qué y hasta cuándo. Ese texto viaja en `ProblemDetails.detail`, y el código
+base lo descartaba en seis lugares:
+
+```js
+catch { alert('Error al procesar la solicitud') }
+```
+
+No es que lo ignorara: **ni siquiera lo recibía**. El `catch` sin binding
+descarta el error antes de poder leerlo. Toda la política de cupo, para el
+usuario, era esa misma frase.
+
+Dos operaciones estaban peor todavía:
+
+```js
+async cancelar (id) {
+  await consultasApi.cancelar(id)      // sin catch y sin refrescar
+}
+```
+
+Un 409 acá no muestra nada y la fila sigue diciendo "Pendiente". **Y en el caso
+exitoso tampoco cambia nada**, porque la respuesta se descarta. El usuario hace
+clic, no ocurre nada visible, y concluye que el sistema está roto.
+
+#### La traducción de errores
+
+`services/http.js` clasifica cada falla en una categoría que la interfaz
+necesita distinguir:
+
+| Tipo | Origen | Qué significa |
+|---|---|---|
+| `validacion` | 400 con `errors` | Lo que se escribió no sirve, y se sabe en qué campo |
+| `noEncontrado` | 404 | El recurso no existe |
+| `regla` | 409 | El sistema funciona; la operación no corresponde |
+| `servidor` | 5xx | El sistema falló |
+| `red` | sin respuesta | No se llegó al servidor |
+
+No son los códigos HTTP: son las **decisiones distintas que toma la vista**. Un
+cupo agotado y un `NullReferenceException` son ambos "error" para axios, y cosas
+opuestas para quien mira la pantalla.
+
+De ahí que `AvisoDeError` los pinte distinto. Un rechazo por regla va en ámbar y
+un fallo técnico en rojo, y solo el segundo ofrece **Reintentar**: un 409 va a
+volver a fallar igual, así que ofrecer el botón sería mentir. Mostrar un cupo
+agotado en rojo manda al usuario a llamar a soporte; mostrarlo como aviso lo
+manda a leer el mensaje, que es donde está la respuesta.
+
+El detalle de un **5xx se descarta a propósito**: describe una falla interna, no
+le dice nada a quien está del otro lado y filtra información del servidor.
+
+El interceptor **rechaza** con el error tipado en lugar de devolverlo, para que
+`try/catch` siga siendo la forma natural de escribirlo y una llamada que se
+olvide de manejarlo falle a la vista en lugar de seguir con un valor indefinido.
+
+#### Lo que el cliente no debe saber
+
+La tentación acá era replicar reglas en el frontend: deshabilitar "Cancelar"
+según el estado, mostrar el panel de cupo si `especialidad === 'Nutrición'`. Las
+dos crean una **segunda fuente de verdad que se desincroniza sin que nada
+falle** — exactamente lo que el catálogo de especialidades vino a eliminar del
+backend.
+
+El criterio adoptado: **prevenir preguntándole al servidor, no copiando sus
+reglas.** Dos agregados al contrato:
+
+| Campo | Dónde | Reemplaza a |
+|---|---|---|
+| `ConsultaResponse.TransicionesPermitidas` | `GET /consultas/{id}` | Que el cliente reimplemente `CicloDeVidaConsulta` |
+| `ProfesionalResponse.TieneCupo` | `GET /profesionales` | Que el cliente compare el nombre de la especialidad |
+
+`TransicionesPermitidas` sale de `CicloDeVidaConsulta.TransicionesDesde`, que ya
+existía. Con eso, el detalle deja de ofrecer los cinco estados —incluidos los
+que la tabla rechaza con un 409— y una consulta terminal muestra *"Una consulta
+en estado Atendido no admite cambios de estado"* en lugar de botones que no
+funcionan.
+
+`TieneCupo` se resuelve contra `ICupoPolicy.CodigoEspecialidad`, que es
+justamente la costura de despacho descrita en §3.9. El código de especialidad
+sigue sin salir al contrato público: lo que sale es la respuesta a la pregunta.
+
+#### El cupo deja de ser solo un rechazo
+
+Elegido el afiliado y un profesional con cupo, el formulario muestra el estado
+**antes de enviar**:
+
+```
+Cupo de nutrición
+Año  ██████  6 de 6 · hasta el 31/12/2026
+Mes  ░       0 de 1 · hasta el 30/11/2026
+```
+
+Una regla que el usuario solo descubre cuando lo frena es la misma experiencia
+que daba el código base. Si el envío igual falla por cupo —pudo cambiar entre
+que se cargó el panel y se confirmó— el panel se recarga para reflejar el estado
+real.
+
+El panel también está en la lista de afiliados, a demanda por fila. Ahí
+reemplaza a la columna `consultasUsadas`, que mostraba un contador que **ya no
+es fuente de verdad** (§5.9): un número global no puede representar un cupo que
+se cuenta por especialidad y por período.
+
+#### Dos bugs que solo aparecieron al abrir el navegador
+
+El build pasaba y los tests pasaban. La interfaz tenía dos defectos igual:
+
+**1. La fecha de cupo se corría un día.** El panel mostraba *"hasta el
+30/12/2026"* sobre un `2026-12-31T00:00:00Z`. Medianoche UTC es el día anterior
+en cualquier zona al oeste de Greenwich.
+
+La causa de fondo: el backend manda dos cosas distintas con el mismo formato. La
+fecha del turno es un **instante** —hay que mostrarlo en la hora local de quien
+mira— y el fin del período es una **fecha de calendario**, una decisión ya
+tomada que convertir mueve. `services/fechas.js` las separa en dos funciones con
+nombre, que es exactamente la razón por la que el bug existía: se formateaban
+igual.
+
+**2. El detalle quedaba mostrando la consulta anterior.** Vue Router reusa el
+componente cuando solo cambia el parámetro de ruta, así que `mounted` no vuelve
+a correr. Se agregó un `watch` sobre el parámetro.
+
+Ninguno de los dos lo encontraba la batería de tests existente. El primero quedó
+cubierto; el segundo es comportamiento de router y queda anotado en §6.
+
+#### El resto del inventario
+
+| Problema | Resolución |
+|---|---|
+| #23 Sin validación en cliente | Envío deshabilitado hasta que el formulario esté completo, `min` en la fecha, y errores por campo desde `ValidationProblem` |
+| #25 Baja sin confirmación | `BotonConConfirmacion`, en la propia fila |
+| #26 Sin estados de carga | Cada operación deshabilita su control y los que compiten con ella mientras está en vuelo |
+| #28 URL fija en el código | `import.meta.env.VITE_API_URL`, con `.env.development` y `.env.example` |
+
+La confirmación **no usa `confirm()`**: un diálogo nativo bloquea el hilo de la
+página, no se puede estilar y no deja mostrar en el mismo lugar qué se está por
+hacer.
+
+#### Tests
+
+```
+dotnet test   →  164 passed, 0 failed    (eran 158)
+npm test      →    8 passed, 0 failed    (no había)
+```
+
+| Suite | Qué cubre |
+|---|---|
+| `http.test.js` | La traducción de `ProblemDetails`: que el 409 conserve el motivo, que el 400 ubique cada mensaje en su campo, que el 5xx descarte el detalle interno, y que un cuerpo inesperado no deje la pantalla en blanco |
+| `fechas.test.js` | Que una fecha de calendario no se corra un día al formatearse |
+| `TransicionesEnLaRespuestaTests` | Que lo que declara la respuesta sea la tabla del dominio, recorriendo todos los estados, y que llegue serializado como texto |
+| `CupoEnElCatalogoTests` | Que solo la especialidad de la política declare `TieneCupo` |
+
+El frontend no tenía tests. Se agregó **Vitest** —versión 2, porque la última
+exige Vite 6 y el proyecto está en Vite 5— y se cubrió la capa con lógica real:
+la traducción de errores y el formateo de fechas. Los componentes no se testean:
+son presentacionales y su comportamiento depende de contratos que ya están
+verificados del lado del backend.
+
+También se agregó `package-lock.json`, que el código base no tenía: sin él, dos
+instalaciones del mismo `package.json` pueden resolver versiones distintas.
+
+---
+
 ## 4. Problemas detectados en el código base
 
 Inventario completo de lo relevado. La columna **Estado** indica si está
@@ -1102,14 +1269,14 @@ corregido, planificado o fuera de alcance.
 
 | # | Problema | Dónde | Estado |
 |---|---|---|---|
-| 21 | `cancelar()` sin manejo de error y sin refrescar la vista: el usuario hace clic y no ocurre nada visible; el error queda en consola. Igual `marcarInasistencia()` | `ConsultasList.vue:63`, `ConsultaDetalle.vue:77` | Planificado |
-| 22 | Todos los errores muestran el mismo `alert('Error al procesar la solicitud')`, **descartando el mensaje que el backend ya envía**. Sin esto, la política de cupo es invisible para el usuario | Todas las vistas | Planificado |
-| 23 | Sin validación en el cliente: el formulario se envía vacío | `ConsultaNueva.vue` | Planificado |
+| 21 | `cancelar()` sin manejo de error y sin refrescar la vista: el usuario hace clic y no ocurre nada visible; el error queda en consola. Igual `marcarInasistencia()` | `ConsultasList.vue:63`, `ConsultaDetalle.vue:77` | Corregido — §3.10 |
+| 22 | Todos los errores muestran el mismo `alert('Error al procesar la solicitud')`, **descartando el mensaje que el backend ya envía**. Sin esto, la política de cupo es invisible para el usuario | Todas las vistas | Corregido — §3.10 |
+| 23 | Sin validación en el cliente: el formulario se envía vacío | `ConsultaNueva.vue` | Corregido — §3.10 |
 | 24 | `datetime-local` envía una fecha local sin zona, alimentando el problema de UTC del backend | `ConsultaNueva.vue:32` | Corregido |
-| 25 | Baja de afiliado sin confirmación | `AfiliadosList.vue:32` | Planificado |
-| 26 | Sin estados de carga ni botones deshabilitados durante la petición: permite doble envío | Todas las vistas | Planificado |
-| 27 | Selector de estado libre en el detalle, que expone el problema #5 desde la interfaz | `ConsultaDetalle.vue:18` | Planificado |
-| 28 | URL del backend fija en el código en lugar de variable de entorno | `services/api.js:3` | Planificado |
+| 25 | Baja de afiliado sin confirmación | `AfiliadosList.vue:32` | Corregido — §3.10 |
+| 26 | Sin estados de carga ni botones deshabilitados durante la petición: permite doble envío | Todas las vistas | Corregido — §3.10 |
+| 27 | Selector de estado libre en el detalle, que expone el problema #5 desde la interfaz | `ConsultaDetalle.vue:18` | Corregido — §3.10, con las transiciones que declara el backend |
+| 28 | URL del backend fija en el código en lugar de variable de entorno | `services/api.js:3` | Corregido — §3.10 |
 
 ---
 
@@ -1398,6 +1565,27 @@ Lo que sí se hizo es no empeorarlo: `ActualizarAfiliadoRequest` **excluye**
 `Bloqueado` a propósito (§3.7), de modo que el estado de bloqueo no se pueda
 cambiar de contrabando desde la edición de la ficha de contacto.
 
+### Reactivación de afiliados desde la interfaz
+
+El backend expone `POST /afiliados/{id}/reactivacion`, pero la lista solo
+muestra afiliados activos: no hay desde dónde invocarla. Completarlo requiere un
+filtro de "incluir dados de baja" en el listado, que es una decisión de producto
+—quién puede ver y reactivar una baja— más que una corrección.
+
+### Tests de componentes del frontend
+
+Se testeó la capa con lógica propia (traducción de errores, formateo de fechas).
+Los componentes quedan sin tests: hacerlo bien implica Vue Test Utils y un
+entorno DOM, y lo que verificarían —que el aviso se pinta según el tipo, que el
+botón se deshabilita en vuelo— es comportamiento de presentación sobre
+contratos que ya están verificados del lado del backend.
+
+Un defecto de esta categoría apareció en esta misma rama: el detalle quedaba
+mostrando la consulta anterior al cambiar solo el parámetro de ruta. Lo encontró
+el navegador, no un test, y un test de componente tampoco lo habría encontrado
+—es comportamiento del router—; lo habría encontrado uno de integración, que es
+otra inversión.
+
 ### Autenticación y autorización
 
 El sistema no tiene identidad de usuario. Varias operaciones deberían estar
@@ -1442,7 +1630,7 @@ solicitado y por afectar el contrato que consume el frontend.
 | 3 | Correcciones del backend | Completo — fechas, semántica, ciclo de vida, historial y contratos |
 | 4 | Capa de servicios con interfaces | Completo |
 | 5 | Política de cupo de nutrición | Completo |
-| 6 | Frontend: errores visibles y validación | Pendiente |
+| 6 | Frontend: errores visibles, validación y cupo en pantalla | Completo |
 | 7 | Cierre del documento | En curso |
 
 ---
@@ -1500,3 +1688,15 @@ npm run dev
 ```
 
 Cliente en `http://localhost:5173`.
+
+La URL de la API sale de `VITE_API_URL`. `.env.development` ya trae el valor
+para desarrollo; `.env.example` documenta la variable. Vite la resuelve **en
+tiempo de compilación**, así que un despliegue la inyecta antes del `build`, no
+después.
+
+#### Tests del frontend
+
+```bash
+cd frontend
+npm test
+```

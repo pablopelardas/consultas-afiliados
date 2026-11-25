@@ -1,31 +1,35 @@
-import axios from 'axios'
+import { http } from './http'
 
-const BASE_URL = 'http://localhost:5000'
+// Las vistas consumen datos, no respuestas HTTP. Devolver `res.data` desde acá
+// evita que cada componente repita el desempaquetado.
+const datos = (respuesta) => respuesta.data
 
 export const consultasApi = {
-  getAll:             ()          => axios.get(`${BASE_URL}/consultas`),
-  getById:            (id)        => axios.get(`${BASE_URL}/consultas/${id}`),
-  create:             (data)      => axios.post(`${BASE_URL}/consultas`, data),
-  cancelar:           (id)        => axios.post(`${BASE_URL}/consultas/${id}/cancelacion`),
-  marcarInasistencia: (id)        => axios.post(`${BASE_URL}/consultas/${id}/inasistencia`),
-  registrarAtencion:  (id)        => axios.post(`${BASE_URL}/consultas/${id}/atencion`),
-  actualizarEstado:   (id, data)  => axios.put(`${BASE_URL}/consultas/${id}/estado`, data)
+  getAll:             ()          => http.get('/consultas').then(datos),
+  getById:            (id)        => http.get(`/consultas/${id}`).then(datos),
+  create:             (data)      => http.post('/consultas', data).then(datos),
+  cancelar:           (id)        => http.post(`/consultas/${id}/cancelacion`).then(datos),
+  marcarInasistencia: (id)        => http.post(`/consultas/${id}/inasistencia`).then(datos),
+  registrarAtencion:  (id)        => http.post(`/consultas/${id}/atencion`).then(datos),
+  actualizarEstado:   (id, data)  => http.put(`/consultas/${id}/estado`, data).then(datos)
 }
 
 export const afiliadosApi = {
-  getAll:  ()          => axios.get(`${BASE_URL}/afiliados`),
-  getById: (id)        => axios.get(`${BASE_URL}/afiliados/${id}`),
-  create:  (data)      => axios.post(`${BASE_URL}/afiliados`, data),
-  update:  (id, data)  => axios.put(`${BASE_URL}/afiliados/${id}`, data),
+  getAll:  ()          => http.get('/afiliados').then(datos),
+  getById: (id)        => http.get(`/afiliados/${id}`).then(datos),
+  create:  (data)      => http.post('/afiliados', data).then(datos),
+  update:  (id, data)  => http.put(`/afiliados/${id}`, data).then(datos),
   // Baja lógica: el registro y su historial de consultas se conservan.
-  darDeBaja: (id)      => axios.delete(`${BASE_URL}/afiliados/${id}`),
-  reactivar: (id)      => axios.post(`${BASE_URL}/afiliados/${id}/reactivacion`)
+  darDeBaja: (id)      => http.delete(`/afiliados/${id}`).then(datos),
+  reactivar: (id)      => http.post(`/afiliados/${id}/reactivacion`).then(datos),
+  // Estado del cupo de nutrición: límite, usadas y disponibles por período.
+  getCupoNutricion: (id) => http.get(`/afiliados/${id}/cupo-nutricion`).then(datos)
 }
 
 export const profesionalesApi = {
-  getAll: () => axios.get(`${BASE_URL}/profesionales`)
+  getAll: () => http.get('/profesionales').then(datos)
 }
 
 export const sedesApi = {
-  getAll: () => axios.get(`${BASE_URL}/sedes`)
+  getAll: () => http.get('/sedes').then(datos)
 }
