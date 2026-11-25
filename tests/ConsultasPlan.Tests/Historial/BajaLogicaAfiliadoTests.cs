@@ -1,10 +1,6 @@
-using ConsultasPlan.Controllers;
 using ConsultasPlan.Contratos;
-using ConsultasPlan.Data;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ConsultasPlan.Tests.Historial;
@@ -19,17 +15,6 @@ namespace ConsultasPlan.Tests.Historial;
 /// </remarks>
 public class BajaLogicaAfiliadoTests
 {
-    private static AfiliadosController Afiliados(AppDbContext db) => new(db, Reloj.Fijo());
-    private static ConsultasController Consultas(AppDbContext db) => new(db, Reloj.Fijo());
-
-    private static void AssertConflicto(IActionResult resultado) =>
-        Assert.Equal(StatusCodes.Status409Conflict,
-            Assert.IsType<ObjectResult>(resultado).StatusCode);
-
-    private static void AssertNoEncontrado(IActionResult resultado) =>
-        Assert.Equal(StatusCodes.Status404NotFound,
-            Assert.IsType<ObjectResult>(resultado).StatusCode);
-
     // El punto central: dar de baja no destruye el historial clínico.
     [Fact]
     public async Task Dar_de_baja_conserva_las_consultas_con_su_afiliado()
@@ -40,7 +25,7 @@ public class BajaLogicaAfiliadoTests
         db.AgregarConsulta(afiliado, profesional, Reloj.Ahora.AddDays(-30), EstadoConsulta.Atendido);
         db.AgregarConsulta(afiliado, profesional, Reloj.Ahora.AddDays(-60), EstadoConsulta.Atendido);
 
-        await Afiliados(db).Delete(afiliado.Id);
+        await ServiciosDePrueba.Afiliados(db).DarDeBaja(afiliado.Id);
 
         var consultas = await db.Consultas
             .Include(c => c.Afiliado)
@@ -61,7 +46,7 @@ public class BajaLogicaAfiliadoTests
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
 
-        await Afiliados(db).Delete(afiliado.Id);
+        AssertResultado.Exito(await ServiciosDePrueba.Afiliados(db).DarDeBaja(afiliado.Id));
 
         var persistido = await db.Afiliados.FindAsync(afiliado.Id);
         Assert.NotNull(persistido);
@@ -74,13 +59,12 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
         var vigente = db.AgregarAfiliado("Vigente");
-        var baja = db.AgregarAfiliado("Dado de baja");
+        var baja = db.AgregarAfiliado("Dado de baja", dni: "30000001");
+        var afiliados = ServiciosDePrueba.Afiliados(db);
 
-        await Afiliados(db).Delete(baja.Id);
+        await afiliados.DarDeBaja(baja.Id);
 
-        var resultado = await Afiliados(db).GetAll();
-        var listado = Assert.IsAssignableFrom<IEnumerable<AfiliadoResponse>>(
-            Assert.IsType<OkObjectResult>(resultado).Value).ToList();
+        var listado = await afiliados.ListarVigentes();
 
         Assert.Single(listado);
         Assert.Equal(vigente.Id, listado[0].Id);
@@ -91,10 +75,11 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
+        var afiliados = ServiciosDePrueba.Afiliados(db);
 
-        await Afiliados(db).Delete(afiliado.Id);
+        await afiliados.DarDeBaja(afiliado.Id);
 
-        AssertNoEncontrado(await Afiliados(db).GetById(afiliado.Id));
+        AssertResultado.NoEncontrado(await afiliados.Obtener(afiliado.Id));
     }
 
     [Fact]
@@ -102,10 +87,11 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
+        var afiliados = ServiciosDePrueba.Afiliados(db);
 
-        await Afiliados(db).Delete(afiliado.Id);
+        await afiliados.DarDeBaja(afiliado.Id);
 
-        var resultado = await Afiliados(db).Update(
+        var resultado = await afiliados.Actualizar(
             afiliado.Id, new ActualizarAfiliadoRequest
             {
                 NombreCompleto = "Nombre nuevo",
@@ -114,7 +100,7 @@ public class BajaLogicaAfiliadoTests
                 Telefono = "1145678901"
             });
 
-        AssertNoEncontrado(resultado);
+        AssertResultado.NoEncontrado(resultado);
         Assert.NotEqual("Nombre nuevo", db.Afiliados.Find(afiliado.Id)!.NombreCompleto);
     }
 
@@ -127,9 +113,9 @@ public class BajaLogicaAfiliadoTests
         var afiliado = db.AgregarAfiliado();
         var profesional = db.AgregarProfesional();
 
-        await Afiliados(db).Delete(afiliado.Id);
+        await ServiciosDePrueba.Afiliados(db).DarDeBaja(afiliado.Id);
 
-        var resultado = await Consultas(db).CrearConsulta(new CrearConsultaRequest
+        var resultado = await ServiciosDePrueba.Consultas(db).Crear(new CrearConsultaRequest
         {
             AfiliadoId = afiliado.Id,
             ProfesionalId = profesional.Id,
@@ -138,7 +124,7 @@ public class BajaLogicaAfiliadoTests
             Motivo = "No debería crearse"
         });
 
-        AssertNoEncontrado(resultado);
+        AssertResultado.NoEncontrado(resultado);
         Assert.Empty(db.Consultas.Where(c => c.AfiliadoId == afiliado.Id));
     }
 
@@ -147,10 +133,11 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
+        var afiliados = ServiciosDePrueba.Afiliados(db);
 
-        await Afiliados(db).Delete(afiliado.Id);
+        await afiliados.DarDeBaja(afiliado.Id);
 
-        AssertConflicto(await Afiliados(db).Delete(afiliado.Id));
+        AssertResultado.Conflicto(await afiliados.DarDeBaja(afiliado.Id));
     }
 
     // Una baja que no se puede deshacer es un borrado con otro nombre.
@@ -159,18 +146,17 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
-        await Afiliados(db).Delete(afiliado.Id);
+        var afiliados = ServiciosDePrueba.Afiliados(db);
+        await afiliados.DarDeBaja(afiliado.Id);
 
-        var resultado = await Afiliados(db).Reactivar(afiliado.Id);
-
-        Assert.IsType<OkObjectResult>(resultado);
+        AssertResultado.Exito(await afiliados.Reactivar(afiliado.Id));
 
         var persistido = db.Afiliados.Find(afiliado.Id)!;
         Assert.True(persistido.Activo);
         Assert.Null(persistido.FechaBaja);
 
         // Y vuelve a estar disponible para las vistas operativas.
-        Assert.IsType<OkObjectResult>(await Afiliados(db).GetById(afiliado.Id));
+        AssertResultado.Exito(await afiliados.Obtener(afiliado.Id));
     }
 
     [Fact]
@@ -179,7 +165,7 @@ public class BajaLogicaAfiliadoTests
         using var db = ContextoDePrueba.Crear();
         var afiliado = db.AgregarAfiliado();
 
-        AssertConflicto(await Afiliados(db).Reactivar(afiliado.Id));
+        AssertResultado.Conflicto(await ServiciosDePrueba.Afiliados(db).Reactivar(afiliado.Id));
     }
 
     [Fact]
@@ -187,7 +173,7 @@ public class BajaLogicaAfiliadoTests
     {
         using var db = ContextoDePrueba.Crear();
 
-        var resultado = await Afiliados(db).Create(new CrearAfiliadoRequest
+        var resultado = await ServiciosDePrueba.Afiliados(db).Crear(new CrearAfiliadoRequest
         {
             NombreCompleto = "Nuevo Afiliado",
             DNI = "40000000",
@@ -195,14 +181,9 @@ public class BajaLogicaAfiliadoTests
             Telefono = "1145678901"
         });
 
-        var creado = Assert.IsType<AfiliadoResponse>(
-            Assert.IsType<CreatedAtActionResult>(resultado).Value);
-        Assert.Equal(Reloj.Ahora, creado.FechaAlta);
-
-        // Activo y FechaBaja no se exponen en el contrato de salida: son
-        // estado interno. Se verifican contra la entidad persistida.
-        var persistido = db.Afiliados.Find(creado.Id)!;
-        Assert.True(persistido.Activo);
-        Assert.Null(persistido.FechaBaja);
+        AssertResultado.Exito(resultado);
+        Assert.Equal(Reloj.Ahora, resultado.Valor.FechaAlta);
+        Assert.True(resultado.Valor.Activo);
+        Assert.Null(resultado.Valor.FechaBaja);
     }
 }

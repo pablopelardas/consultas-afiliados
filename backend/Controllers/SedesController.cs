@@ -1,7 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ConsultasPlan.Contratos;
-using ConsultasPlan.Data;
+using ConsultasPlan.Servicios;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ConsultasPlan.Controllers;
 
@@ -9,17 +8,11 @@ namespace ConsultasPlan.Controllers;
 [Route("[controller]")]
 public class SedesController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly ICatalogoService _catalogo;
 
-    public SedesController(AppDbContext context)
-    {
-        _context = context;
-    }
+    public SedesController(ICatalogoService catalogo) => _catalogo = catalogo;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
-    {
-        var sedes = await _context.Sedes.ToListAsync();
-        return Ok(sedes.Select(SedeResponse.De));
-    }
+    public async Task<IActionResult> GetAll() =>
+        Ok((await _catalogo.ListarSedes()).Select(SedeResponse.De));
 }

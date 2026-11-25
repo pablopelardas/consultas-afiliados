@@ -1,32 +1,21 @@
-using ConsultasPlan.Controllers;
-using ConsultasPlan.Contratos;
-using ConsultasPlan.Data;
 using ConsultasPlan.Models;
 using ConsultasPlan.Tests.Infraestructura;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 
 namespace ConsultasPlan.Tests.Dominio;
 
 /// <summary>
-/// Los endpoints respetan el ciclo de vida.
+/// Las operaciones del servicio respetan el ciclo de vida.
 /// </summary>
 /// <remarks>
 /// La tabla de transiciones se verifica aparte, sin infraestructura. Acá se
-/// comprueba que cada endpoint la consulta antes de asignar el estado — que es
-/// justamente lo que el código base no hacía.
+/// comprueba que toda operación que cambia de estado la consulta antes de
+/// asignar — que es justamente lo que el código base no hacía.
 ///
 /// Los tres primeros reemplazan tests de caracterización que documentaban el
-/// defecto y que esta rama vuelve obsoletos.
+/// defecto.
 /// </remarks>
-public class TransicionesEnLosEndpointsTests
+public class TransicionesEnLasOperacionesTests
 {
-    private static ConsultasController Controlador(AppDbContext db) => new(db, Reloj.Fijo());
-
-    private static void AssertConflicto(IActionResult resultado) =>
-        Assert.Equal(StatusCodes.Status409Conflict,
-            Assert.IsType<ObjectResult>(resultado).StatusCode);
-
     [Fact]
     public async Task No_se_puede_marcar_inasistencia_sobre_una_consulta_cancelada()
     {
@@ -35,9 +24,9 @@ public class TransicionesEnLosEndpointsTests
             db.AgregarAfiliado(), db.AgregarProfesional(),
             Reloj.Ahora.AddDays(-10), EstadoConsulta.Cancelado);
 
-        var resultado = await Controlador(db).MarcarInasistencia(consulta.Id);
+        var resultado = await ServiciosDePrueba.Consultas(db).RegistrarInasistencia(consulta.Id);
 
-        AssertConflicto(resultado);
+        AssertResultado.Conflicto(resultado);
         Assert.Equal(EstadoConsulta.Cancelado, db.Consultas.Find(consulta.Id)!.Estado);
     }
 
@@ -49,9 +38,9 @@ public class TransicionesEnLosEndpointsTests
             db.AgregarAfiliado(), db.AgregarProfesional(),
             Reloj.Ahora.AddDays(-10), EstadoConsulta.Cancelado);
 
-        var resultado = await Controlador(db).RegistrarAtencion(consulta.Id);
+        var resultado = await ServiciosDePrueba.Consultas(db).RegistrarAtencion(consulta.Id);
 
-        AssertConflicto(resultado);
+        AssertResultado.Conflicto(resultado);
         Assert.Equal(EstadoConsulta.Cancelado, db.Consultas.Find(consulta.Id)!.Estado);
     }
 
@@ -63,10 +52,10 @@ public class TransicionesEnLosEndpointsTests
             db.AgregarAfiliado(), db.AgregarProfesional(),
             Reloj.Ahora.AddDays(-10), EstadoConsulta.Atendido);
 
-        var resultado = await Controlador(db).ActualizarEstado(
-            consulta.Id, new ActualizarEstadoRequest { Estado = EstadoConsulta.Pendiente });
+        var resultado = await ServiciosDePrueba.Consultas(db)
+            .CambiarEstado(consulta.Id, EstadoConsulta.Pendiente);
 
-        AssertConflicto(resultado);
+        AssertResultado.Conflicto(resultado);
         Assert.Equal(EstadoConsulta.Atendido, db.Consultas.Find(consulta.Id)!.Estado);
     }
 
@@ -78,13 +67,11 @@ public class TransicionesEnLosEndpointsTests
             db.AgregarAfiliado(), db.AgregarProfesional(),
             Reloj.Ahora.AddDays(10), EstadoConsulta.Cancelado);
 
-        var resultado = await Controlador(db).CancelarConsulta(consulta.Id);
-
-        AssertConflicto(resultado);
+        AssertResultado.Conflicto(await ServiciosDePrueba.Consultas(db).Cancelar(consulta.Id));
     }
 
-    // El flujo operativo normal del staff sigue habilitado: el endpoint genérico
-    // existe para eso y las transiciones válidas no se tocaron.
+    // El flujo operativo normal del staff sigue habilitado: la operación
+    // genérica existe para eso y las transiciones válidas no se tocaron.
     [Fact]
     public async Task El_flujo_operativo_Pendiente_Confirmado_Atendido_sigue_habilitado()
     {
@@ -92,14 +79,12 @@ public class TransicionesEnLosEndpointsTests
         var consulta = db.AgregarConsulta(
             db.AgregarAfiliado(), db.AgregarProfesional(),
             Reloj.Ahora.AddDays(-1), EstadoConsulta.Pendiente);
+        var consultas = ServiciosDePrueba.Consultas(db);
 
-        var aConfirmado = await Controlador(db).ActualizarEstado(
-            consulta.Id, new ActualizarEstadoRequest { Estado = EstadoConsulta.Confirmado });
-        Assert.IsType<OkObjectResult>(aConfirmado);
-
-        var aAtendido = await Controlador(db).ActualizarEstado(
-            consulta.Id, new ActualizarEstadoRequest { Estado = EstadoConsulta.Atendido });
-        Assert.IsType<OkObjectResult>(aAtendido);
+        AssertResultado.Exito(
+            await consultas.CambiarEstado(consulta.Id, EstadoConsulta.Confirmado));
+        AssertResultado.Exito(
+            await consultas.CambiarEstado(consulta.Id, EstadoConsulta.Atendido));
 
         Assert.Equal(EstadoConsulta.Atendido, db.Consultas.Find(consulta.Id)!.Estado);
     }
@@ -114,10 +99,27 @@ public class TransicionesEnLosEndpointsTests
             db.AgregarAfiliado(), db.AgregarProfesional(),
             Reloj.Ahora.AddDays(-5), EstadoConsulta.Inasistencia);
 
-        var resultado = await Controlador(db).ActualizarEstado(
-            consulta.Id, new ActualizarEstadoRequest { Estado = EstadoConsulta.Atendido });
+        var resultado = await ServiciosDePrueba.Consultas(db)
+            .CambiarEstado(consulta.Id, EstadoConsulta.Atendido);
 
-        Assert.IsType<OkObjectResult>(resultado);
+        AssertResultado.Exito(resultado);
         Assert.Equal(EstadoConsulta.Atendido, db.Consultas.Find(consulta.Id)!.Estado);
+    }
+
+    // La transición es legal y la regla temporal no: una consulta que todavía no
+    // ocurrió no puede tener inasistencia, y el camino genérico tampoco puede
+    // forzarla.
+    [Fact]
+    public async Task El_cambio_de_estado_generico_no_saltea_la_regla_de_inasistencia()
+    {
+        using var db = ContextoDePrueba.Crear();
+        var consulta = db.AgregarConsulta(
+            db.AgregarAfiliado(), db.AgregarProfesional(), Reloj.Ahora.AddDays(5));
+
+        var resultado = await ServiciosDePrueba.Consultas(db)
+            .CambiarEstado(consulta.Id, EstadoConsulta.Inasistencia);
+
+        AssertResultado.Conflicto(resultado);
+        Assert.Equal(EstadoConsulta.Pendiente, db.Consultas.Find(consulta.Id)!.Estado);
     }
 }

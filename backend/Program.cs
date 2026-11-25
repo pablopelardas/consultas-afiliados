@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ConsultasPlan.Data;
+using ConsultasPlan.Servicios;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // sin esto sus bordes no se pueden verificar: habría que esperar a que el reloj
 // del sistema llegue al instante exacto.
 builder.Services.AddSingleton(TimeProvider.System);
+
+// Los controladores dependen de la interfaz, no de la implementación. Eso es lo
+// que permite sustituir un servicio en un test sin tocar el controlador, y lo
+// que mantiene a los controladores sin acceso a AppDbContext.
+// Scoped porque comparten el ciclo de vida del DbContext del que dependen.
+builder.Services.AddScoped<IConsultaService, ConsultaService>();
+builder.Services.AddScoped<IAfiliadoService, AfiliadoService>();
+builder.Services.AddScoped<ICatalogoService, CatalogoService>();
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
