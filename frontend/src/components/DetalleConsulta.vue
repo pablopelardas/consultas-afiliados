@@ -28,12 +28,24 @@
       </p>
 
       <div v-else class="acciones">
-        <BotonConConfirmacion
-          v-for="op in operaciones"
+        <button
+          v-for="(op, i) in avance"
           :key="op.estado"
+          :class="i > 0 && 'btn-secundario'"
+          :disabled="ocupado"
+          @click="ejecutar(op.estado)"
+        >
+          <span v-if="enCurso === op.estado" class="hilandero" />
+          {{ enCurso === op.estado ? op.enCurso : op.etiqueta }}
+        </button>
+
+        <BotonConConfirmacion
+          v-for="op in destructivas"
+          :key="op.estado"
+          class="aparte"
           :etiqueta="op.etiqueta"
           :pregunta="op.pregunta"
-          :peligro="op.peligro"
+          peligro
           :cargando="enCurso === op.estado"
           :disabled="ocupado"
           @confirmado="ejecutar(op.estado)"
@@ -56,27 +68,35 @@ import BotonConConfirmacion from './BotonConConfirmacion.vue'
  * presentarse, cancelar— y no asignaciones a un campo. Confirmar es la única
  * sin ruta dedicada y usa la genérica, que valida la misma tabla.
  */
+// Orden de lectura de la pantalla: el avance del turno primero y lo
+// irreversible al final.
+const ORDEN = ['Confirmado', 'Atendido', 'Inasistencia', 'Cancelado']
+
 const OPERACIONES = {
   Confirmado: {
     estado: 'Confirmado',
+    enCurso: 'Confirmando…',
     etiqueta: 'Confirmar',
     pregunta: '¿Confirmar?',
     llamar: (id) => consultasApi.actualizarEstado(id, { estado: 'Confirmado' })
   },
   Atendido: {
     estado: 'Atendido',
+    enCurso: 'Registrando…',
     etiqueta: 'Registrar atención',
     pregunta: '¿Registrar la atención?',
     llamar: (id) => consultasApi.registrarAtencion(id)
   },
   Inasistencia: {
     estado: 'Inasistencia',
+    enCurso: 'Marcando…',
     etiqueta: 'Marcar inasistencia',
     pregunta: '¿Marcar inasistencia?',
     llamar: (id) => consultasApi.marcarInasistencia(id)
   },
   Cancelado: {
     estado: 'Cancelado',
+    enCurso: 'Cancelando…',
     etiqueta: 'Cancelar consulta',
     pregunta: '¿Cancelar la consulta?',
     peligro: true,
@@ -106,10 +126,26 @@ export default {
       return this.consulta?.transicionesPermitidas ?? []
     },
 
-    // Una acción por transición posible, nombrada por lo que ocurre y no por
-    // el campo que se escribe. El backend decide cuáles aparecen.
+    // El backend decide QUÉ acciones existen; el orden lo decide la interfaz.
+    // `transicionesPermitidas` viene en el orden de la tabla del dominio, que
+    // para una pantalla es arbitrario: dejaba "Cancelar consulta" en el medio,
+    // entre dos acciones inofensivas y a un error de distancia.
     operaciones () {
-      return this.transiciones.map(estado => OPERACIONES[estado])
+      return ORDEN
+        .filter(estado => this.transiciones.includes(estado))
+        .map(estado => OPERACIONES[estado])
+    },
+
+    // El avance del turno. El primero es el paso natural desde el estado
+    // actual, así que es el único con peso de acción principal.
+    avance () {
+      return this.operaciones.filter(op => !op.peligro)
+    },
+
+    // Separadas y al final: una acción irreversible no comparte grupo con las
+    // que se pueden deshacer agendando de nuevo.
+    destructivas () {
+      return this.operaciones.filter(op => op.peligro)
     },
 
     ocupado () {
@@ -197,6 +233,14 @@ export default {
   align-items: center;
   gap: var(--e-xs);
   margin-top: var(--e-md);
+}
+
+/* Empujada al extremo opuesto: para llegar hay que cruzar el grupo entero, que
+   es justo la distancia que una acción irreversible necesita. */
+.aparte { margin-left: auto; }
+
+@media (max-width: 600px) {
+  .aparte { margin-left: 0; width: 100%; }
 }
 
 .hilandero { border-top-color: currentColor; }

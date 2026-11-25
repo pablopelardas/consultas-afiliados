@@ -1371,6 +1371,38 @@ Como la ruta reusa el mismo componente, la lista no se remonta: al crear una
 consulta se recarga explícitamente, que es lo que hace que la fila nueva
 aparezca sin que el usuario tenga que refrescar.
 
+#### El backend decide qué acciones hay; la interfaz decide en qué orden
+
+El detalle llegó a tener **dos controles para el mismo trabajo**: un selector de
+estado con su botón «Actualizar», y además tres botones de acción. El selector
+encima nombraba el campo que se escribe (`Atendido`) en lugar del hecho que
+ocurre (`Registrar atención`), que es justo la distinción que §3.4 corrigió en
+la API.
+
+Quedó **un botón por transición que el backend declara posible**. Tres usan su
+endpoint propio porque son hechos distintos; «Confirmar» es la única sin ruta
+dedicada y usa la genérica, que valida la misma tabla.
+
+Pero tomar el orden de `TransicionesPermitidas` tal como viene fue un error:
+ese es el orden de la **tabla del dominio**, que para una pantalla es
+arbitrario. Dejaba «Cancelar consulta» en segundo lugar, entre dos acciones
+inofensivas y a un error de distancia.
+
+| | |
+|---|---|
+| Antes | `Confirmar` · **`Cancelar consulta`** · `Registrar atención` · `Marcar inasistencia` |
+| Ahora | `Confirmar` · `Registrar atención` · `Marcar inasistencia` ——— **`Cancelar consulta`** |
+
+El orden lo fija la interfaz: primero el avance del turno, lo irreversible al
+final y **empujado al extremo opuesto**, de modo que para llegar haya que
+cruzar el grupo entero. Esa distancia es la que una acción irreversible
+necesita.
+
+La primera del avance es la única con peso de acción principal, y se recalcula
+sola: en una consulta pendiente es «Confirmar»; apenas se confirma, «Confirmar»
+desaparece y «Registrar atención» ocupa su lugar. Ninguna de esas tres pide
+confirmación —se deshacen agendando de nuevo—; solo la destructiva la pide.
+
 #### Qué no cambió
 
 Ninguna llamada a la API, ningún manejo de error, ninguna regla. Los ocho tests
